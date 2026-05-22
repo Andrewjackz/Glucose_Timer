@@ -1,0 +1,468 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="Glucose Timer" />
+<meta name="theme-color" content="#ffffff" />
+<title>Glucose Timer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#FAFAF7; --surface:#FFFFFF; --line:#E7E6E0; --line2:#D7D6CE;
+    --ink:#1B2330; --muted:#5A6473; --faint:#8A93A1;
+    --blue:#2563EB; --bluefill:#DCE7FF; --red:#DC2626; --redfill:#FBE0DF;
+    --amber:#D97706; --amberfill:#FBEACB; --green:#16A34A; --greenfill:#DCF3E2;
+    --radius:12px; --radius-sm:9px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);
+    font-family:"IBM Plex Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased;line-height:1.5;font-size:16px}
+  .num{font-family:"IBM Plex Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
+  .wrap{max-width:760px;margin:0 auto;padding:18px 16px 64px}
+  header.app{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:6px}
+  header.app h1{font-size:20px;font-weight:600;margin:0;letter-spacing:-0.01em}
+  header.app .sub{font-size:13px;color:var(--muted)}
+  .disc{font-size:12px;color:var(--faint);margin:2px 0 16px;line-height:1.45}
+
+  .tabs{display:flex;gap:4px;margin-bottom:14px;border-bottom:1px solid var(--line)}
+  .tab{padding:9px 16px;border:none;border-bottom:2px solid transparent;background:none;color:var(--muted);border-radius:0;font-weight:500;font-size:14px;cursor:pointer}
+  .tab:hover{color:var(--ink)}
+  .tab.active{color:var(--blue);border-bottom-color:var(--blue)}
+
+  .cards{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
+  @media(max-width:560px){.cards{grid-template-columns:1fr}}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:13px 15px}
+  .card.flag-red{border-color:#e7b4b4;background:#FFF6F5}
+  .card.flag-amber{border-color:#ecd29a;background:#FFFBF2}
+  .card.flag-green{border-color:#bfe3c7;background:#F6FCF7}
+  .card .lab{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;margin-bottom:5px}
+  .card .big{font-size:27px;font-weight:600;letter-spacing:-0.02em;line-height:1.1}
+  .card .big .u{font-size:14px;font-weight:500;color:var(--muted);margin-left:3px}
+  .card .sub{font-size:12px;color:var(--muted);margin-top:5px}
+  .dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+  .dot.b{background:var(--blue)} .dot.a{background:var(--amber)} .dot.r{background:var(--red)} .dot.g{background:var(--green)}
+
+  .panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:14px 15px;margin-bottom:14px}
+  .row{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px}
+  .grow{flex:1 1 auto}
+  label.fl{font-size:12px;color:var(--muted);display:block;margin-bottom:4px}
+  button{font-family:inherit;font-size:14px;border-radius:var(--radius-sm);border:1px solid var(--line2);background:var(--surface);color:var(--ink);padding:9px 14px;cursor:pointer;transition:.12s}
+  button:hover{border-color:#bfbeb4;background:#fcfcfa}
+  button:active{transform:scale(.985)}
+  button.primary{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:500}
+  button.primary:hover{background:#1d57cf;border-color:#1d57cf}
+  button.big{padding:13px 18px;font-size:16px;font-weight:600;border-radius:11px}
+  button.danger-ghost{color:var(--red);border-color:#eccfcf}
+  button.toggle{font-weight:500}
+  button.toggle.on{background:var(--green);border-color:var(--green);color:#fff}
+  input[type=number],input[type=text],input[type=password],select{font-family:inherit;font-size:15px;color:var(--ink);background:var(--surface);border:1px solid var(--line2);border-radius:var(--radius-sm);padding:8px 10px;width:100%}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+  .field{display:flex;flex-direction:column}
+  .field.w-sm{width:96px} .field.w-md{width:130px}
+  .stepper{display:flex;align-items:stretch}
+  .stepper button{width:40px;padding:0;font-size:18px;border-radius:0}
+  .stepper button:first-child{border-radius:var(--radius-sm) 0 0 var(--radius-sm)}
+  .stepper button:last-child{border-radius:0 var(--radius-sm) var(--radius-sm) 0}
+  .stepper input{text-align:center;border-radius:0;border-left:0;border-right:0;width:62px}
+  .sec-title{font-size:13px;font-weight:600;color:var(--ink);margin:0 0 10px}
+  .chartwrap{position:relative;width:100%;height:340px;margin-top:6px}
+  .legend{display:flex;flex-wrap:wrap;gap:14px;font-size:12px;color:var(--muted);margin:4px 0 2px}
+  .legend span{display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none}
+  .legend span.off{opacity:.35}
+  .swatch{width:16px;height:0;border-top-width:3px;border-top-style:solid;display:inline-block}
+  .swatch.band{height:11px;width:14px;border:none;border-radius:3px}
+  .help{font-size:12px;color:var(--faint);margin-top:3px;line-height:1.4}
+  table.log{width:100%;border-collapse:collapse;font-size:14px}
+  table.log th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);font-weight:500;padding:6px 8px;border-bottom:1px solid var(--line)}
+  table.log td{padding:8px;border-bottom:1px solid #F0EFE9;vertical-align:middle}
+  table.log tr:last-child td{border-bottom:none}
+  .pill{font-size:11px;font-weight:500;padding:2px 8px;border-radius:20px;white-space:nowrap}
+  .pill.tab{background:var(--bluefill);color:#1740a8}
+  .pill.bg{background:var(--greenfill);color:#0f6e2f}
+  .pill.ins{background:var(--redfill);color:#a02020}
+  .pill.ex{background:var(--amberfill);color:#925208}
+  .pill.food{background:#EFE7FB;color:#5b3aa8}
+  .st{font-size:12px;color:var(--muted)}
+  .x{color:var(--faint);cursor:pointer;font-size:16px;padding:2px 6px;border-radius:6px}
+  .x:hover{background:#F2D9D9;color:var(--red)}
+  .empty{color:var(--faint);font-size:14px;padding:14px 4px;text-align:center}
+  details{margin-bottom:14px}
+  details>summary{cursor:pointer;font-size:14px;font-weight:500;color:var(--muted);padding:6px 0;list-style:none}
+  details>summary::-webkit-details-marker{display:none}
+  details>summary::before{content:"\203A";display:inline-block;margin-right:8px;transition:.15s;color:var(--faint)}
+  details[open]>summary::before{transform:rotate(90deg)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media(max-width:560px){.grid2{grid-template-columns:1fr}}
+  textarea{font-family:inherit;font-size:15px;width:100%;border:1px solid var(--line2);border-radius:var(--radius-sm);padding:9px 11px;resize:vertical;min-height:54px}
+  .ai-out{font-size:14px;background:#F4F6FA;border:1px solid #E4E9F2;border-radius:var(--radius-sm);padding:11px 13px;margin-top:10px;white-space:pre-wrap;display:none}
+  .status{font-size:12px;color:var(--muted);margin-top:6px;min-height:16px}
+  .modelnote{font-size:12.5px;color:var(--muted);line-height:1.55}
+  .modelnote code{font-family:"IBM Plex Mono",monospace;font-size:12px;background:#F1F0EA;padding:1px 5px;border-radius:5px}
+  .hide{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="app"><h1>Glucose Timer</h1><div class="sub">mg/dL</div></header>
+  <div class="disc">A planning &amp; visualisation aid, not a medical device, and not dosing advice. The forecast is only as good as the correction factor and insulin time you set, and it ignores some real effects — always confirm with an actual reading and follow Lynette's care team. In an emergency or loss of consciousness, use glucagon.</div>
+
+  <div class="tabs">
+    <button class="tab active" id="tab1" data-food="0">Insulin offset</button>
+    <button class="tab" id="tab2" data-food="1">+ Food carbs</button>
+  </div>
+
+  <div class="cards">
+    <div class="card" id="nadirCard">
+      <div class="lab"><span class="dot b"></span>Predicted low</div>
+      <div class="big num"><span id="nadirVal">—</span><span class="u">mg/dL</span></div>
+      <div class="sub" id="nadirSub">enter a starting BG</div>
+    </div>
+    <div class="card">
+      <div class="lab"><span class="dot r"></span>Insulin on board</div>
+      <div class="big num"><span id="iobVal">0.0</span><span class="u">u</span></div>
+      <div class="sub num" id="iobSub">no insulin logged</div>
+    </div>
+    <div class="card">
+      <div class="lab"><span class="dot a"></span>Glucose on board</div>
+      <div class="big num"><span id="gobVal">0.0</span><span class="u">g</span></div>
+      <div class="sub num" id="gobSub">0 g taken</div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="legend" id="legend"></div>
+    <div class="chartwrap"><canvas id="chart" role="img" aria-label="Forward forecast of absolute blood glucose with target range, predicted low point, and the path without tablets"></canvas></div>
+    <div class="help">Forward forecast of absolute BG (now = 0). Green band = target range. The dashed line is the path with no tablets; the gap is what your tablets are buying you. Points are actual readings.</div>
+  </div>
+
+  <div class="panel">
+    <div class="sec-title">Where you are now</div>
+    <div class="row">
+      <div class="field grow"><label class="fl">starting BG (mg/dL)</label><input class="num" id="startBg" type="number" min="0" step="1" placeholder="e.g. 200"/></div>
+      <div class="field w-sm"><label class="fl">insulin on board (u)</label><input class="num" id="startIob" type="number" min="0" step="0.05" placeholder="e.g. 2.7"/></div>
+      <div class="field w-sm"><label class="fl">min ago</label><input class="num" id="startAgo" type="number" min="0" step="1" value="0"/></div>
+      <div class="field"><label class="fl">&nbsp;</label><button id="setStart" class="primary">Set now</button></div>
+    </div>
+    <div class="help" id="startNote">Read both straight off the Omnipod 5: current BG and current insulin on board. The forecast projects forward from here; the drop still to come is IOB &times; your correction factor.</div>
+  </div>
+
+  <div class="panel">
+    <div class="sec-title">Offset with glucose</div>
+    <div class="row">
+      <button class="primary big" id="addTablet">Add tablet</button>
+      <div class="field w-sm"><label class="fl">grams / tablet</label>
+        <div class="stepper"><button id="gMinus" aria-label="less">&#8211;</button><input class="num" id="grams" type="number" min="0" step="0.5" value="4"/><button id="gPlus" aria-label="more">+</button></div>
+      </div>
+      <div class="field w-sm"><label class="fl">taken min ago</label><input class="num" id="minAgo" type="number" min="0" step="1" value="0"/></div>
+      <div class="field"><label class="fl">non-insulin burn</label><button class="toggle" id="exBtn">Exercising: off</button></div>
+    </div>
+  </div>
+
+  <div class="panel hide" id="foodPanel">
+    <div class="sec-title">Food carbs still absorbing</div>
+    <div class="row">
+      <div class="field grow"><label class="fl">carbs (g)</label><input class="num" id="foodVal" type="number" min="0" step="1" placeholder="e.g. 30"/></div>
+      <div class="field w-sm"><label class="fl">eaten min ago</label><input class="num" id="foodAgo" type="number" min="0" step="1" value="0"/></div>
+      <div class="field w-md"><label class="fl">absorption</label>
+        <select id="foodSpeed"><option value="fast">fast (~40 min)</option><option value="med" selected>medium (~70 min)</option><option value="slow">slow (~110 min)</option></select></div>
+      <div class="field"><label class="fl">&nbsp;</label><button id="addFood">Log food</button></div>
+    </div>
+    <div class="help">Rough estimate of the slow rise from food still coming in. Fat/protein and GI vary a lot — treat it as indicative, and remember it pushes the forecast up (so leaving it out is the safer, lower estimate).</div>
+  </div>
+
+  <div class="panel">
+    <div class="sec-title">Events</div>
+    <div id="logBox"><div class="empty">Nothing logged yet.</div></div>
+  </div>
+
+  <details>
+    <summary>AI assistant (optional)</summary>
+    <div class="panel" style="margin-top:8px">
+      <div class="sec-title">Anthropic API key</div>
+      <div class="row">
+        <input id="apiKey" type="password" class="grow" autocomplete="off" placeholder="sk-ant-...  (paste to enable AI; not saved)"/>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);white-space:nowrap"><input type="checkbox" id="rememberKey" style="width:auto"/> remember on this device</label>
+      </div>
+      <div class="help">Stays on this device. Unchecked, it's session-only and cleared when you close the tab. Used directly with Claude, no server. Set a low spend cap on this key in the Anthropic console.</div>
+      <div class="sec-title" style="margin-top:18px">Analyse my pattern</div>
+      <div class="help" style="margin-top:0">Compares the forecast against your actual readings and suggests a calibration. Informational only.</div>
+      <button id="analyzeBtn" style="margin-top:8px">Analyse predicted vs actual</button>
+      <div class="ai-out" id="aiOut"></div>
+      <div class="status" id="aiStatus"></div>
+    </div>
+  </details>
+
+  <details>
+    <summary>Settings &amp; calibration</summary>
+    <div class="panel" style="margin-top:8px">
+      <div class="grid2">
+        <div class="field"><label class="fl">Correction factor / ISF (mg/dL per unit)</label><input class="num" id="set_isf" type="number" step="1" value="50"/><div class="help">The forecast's most sensitive input. Set to Lynette's real number.</div></div>
+        <div class="field"><label class="fl">Insulin action ahead (hours)</label><input class="num" id="set_dia" type="number" step="0.5" value="2.5"/><div class="help">How long the on-board insulin keeps acting from now. Sets the drop's timing only; tune to taste.</div></div>
+        <div class="field"><label class="fl">BG rise per gram glucose (mg/dL)</label><input class="num" id="set_mgg" type="number" step="0.1" value="2.0"/></div>
+        <div class="field"><label class="fl">Exercise drain (mg/dL per hour)</label><input class="num" id="set_exd" type="number" step="5" value="40"/></div>
+        <div class="field"><label class="fl">Glucose absorption ka (/min)</label><input class="num" id="set_ka" type="number" step="0.005" value="0.035"/></div>
+        <div class="field"><label class="fl">Glucose consumption ke (/min)</label><input class="num" id="set_ke" type="number" step="0.002" value="0.018"/></div>
+        <div class="field"><label class="fl">Exercise multiplier on ke</label><input class="num" id="set_exf" type="number" step="0.1" value="2.2"/></div>
+        <div class="field"><label class="fl">Target range (mg/dL)</label><div class="row" style="gap:6px"><input class="num" id="set_lo" type="number" step="1" value="70" style="width:70px"/><span class="st">to</span><input class="num" id="set_hi" type="number" step="1" value="180" style="width:70px"/></div></div>
+      </div>
+      <div class="field" style="margin-top:14px"><label class="fl">AI endpoint URL</label><input id="set_api" type="text" value="https://api.anthropic.com/v1/messages"/>
+        <div class="help">Leave as default; AI uses the key above and calls Claude directly.</div></div>
+      <div class="row" style="margin-top:14px;align-items:center"><button class="primary" id="saveSettings">Save settings</button><button id="resetAll" class="danger-ghost">Reset all data</button><span class="status" id="setStatus"></span></div>
+    </div>
+  </details>
+
+  <details>
+    <summary>Model &amp; assumptions</summary>
+    <div class="panel modelnote" style="margin-top:8px">
+      <p style="margin-top:0">The forecast anchors at your <code>starting BG</code> and projects forward only — the meter reading already contains everything that happened before it.</p>
+      <p><b>Insulin</b> is the live on-board number you read off the Omnipod 5. The remaining drop is <code>ISF x IOB</code>, spread evenly over the "insulin action ahead" window. Real insulin is front-loaded, so the depth of the low is solid but its timing is approximate.</p>
+      <p><b>Glucose tablets</b> raise BG on a two-compartment curve (peak ~40 min). <b>Food carbs</b> (second tab) use the same shape but slower, scaled by the chosen absorption speed.</p>
+      <p><b>Exercising</b> adds a steady BG drain and speeds glucose consumption while toggled on.</p>
+      <p><b>Predicted low</b> is the lowest point of the forward curve. It's a planning estimate, not a guarantee — verify with a reading, especially before deciding not to treat.</p>
+    </div>
+  </details>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+(function(){
+  "use strict";
+  var KEY="glucoseTimerState_v2", DT=1, HORIZON=210, PAST=30;
+  var sessionKey="";
+  var mem=null;
+  function load(){ try{ var s=localStorage.getItem(KEY); return s?JSON.parse(s):null; }catch(e){ return mem; } }
+  function persist(){ try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){ mem=state; } }
+
+  var defaults={
+    events:[], exercise:[], start:null, includeFood:false,
+    settings:{ isf:50, dia:3, mgg:2.0, exd:40, ka:0.035, ke:0.018, exf:2.2, lo:70, hi:180, api:"https://api.anthropic.com/v1/messages" },
+    defaultGrams:4
+  };
+  var state=load()||JSON.parse(JSON.stringify(defaults));
+  for(var k in defaults.settings){ if(state.settings[k]===undefined) state.settings[k]=defaults.settings[k]; }
+  if(state.includeFood===undefined) state.includeFood=false;
+  if(state.start===undefined) state.start=null;
+
+  function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
+  function now(){ return Date.now(); }
+  function clock(ms){ return new Date(ms).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}); }
+  function exAt(ms){ for(var i=0;i<state.exercise.length;i++){ var s=state.exercise[i]; if(ms>=s.start&&(s.end==null||ms<=s.end)) return true; } return false; }
+  function exercisingNow(){ var l=state.exercise[state.exercise.length-1]; return !!(l&&l.end==null); }
+
+  function calibScale(ka,ke,mgg){ var g=1,b=0,pk=0; for(var k=0;k<700;k++){ if(b>pk)pk=b; var tr=ka*g,el=ke*b; g=Math.max(0,g-tr); b=Math.max(0,b+tr-el);} return mgg/(pk||1e-9); }
+  var FOOD_KA={fast:0.025, med:0.015, slow:0.009};
+
+  function simulate(){
+    var s=state.settings;
+    var tabs=state.events.filter(function(e){return e.type==='tablet';});
+    var foods=state.events.filter(function(e){return e.type==='food';});
+    var bgs=state.events.filter(function(e){return e.type==='bg';});
+    var t0=now();
+    var anchorT = state.start? state.start.t : t0;
+    var S0 = state.start? state.start.bg : null;
+
+    var earliest=t0;
+    state.events.forEach(function(e){ if(e.t<earliest) earliest=e.t; });
+    if(state.start && state.start.t<earliest) earliest=state.start.t;
+    var tStart=Math.min(earliest,anchorT,t0)-PAST*60000;
+    var tEnd=t0+HORIZON*60000;
+    var N=Math.round((tEnd-tStart)/(DT*60000))+1;
+    var absAt=function(k){ return tStart+k*DT*60000; };
+    var keFn=function(ms){ return exAt(ms)? s.ke*s.exf : s.ke; };
+    var idxAt=function(ms){ return Math.max(0,Math.min(N-1,Math.round((ms-tStart)/(DT*60000)))); };
+    var anchorIdx=idxAt(anchorT), nowIdx=idxAt(t0);
+
+    function bloodCurve(grams,doseIdx,ka){
+      var blood=new Array(N).fill(0), gob=new Array(N).fill(0), g=0,b=0;
+      for(var k=0;k<N;k++){ if(k===doseIdx)g+=grams; blood[k]=b; gob[k]=g+b; var ke=keFn(absAt(k)); var tr=ka*g,el=ke*b; g=Math.max(0,g-tr); b=Math.max(0,b+tr-el);} 
+      return {blood:blood,gob:gob};
+    }
+    var Sglu=calibScale(s.ka,s.ke,s.mgg);
+
+    var tabRise=new Array(N).fill(0), gobArr=new Array(N).fill(0);
+    tabs.forEach(function(t){ var c=bloodCurve(t.grams,idxAt(t.t),s.ka); for(var k=0;k<N;k++){ tabRise[k]+=Sglu*c.blood[k]; gobArr[k]+=c.gob[k]; } });
+
+    var foodRise=new Array(N).fill(0);
+    if(state.includeFood){ foods.forEach(function(f){ var ka=FOOD_KA[f.speed]||FOOD_KA.med; var sc=calibScale(ka,s.ke,s.mgg); var c=bloodCurve(f.grams,idxAt(f.t),ka); for(var k=0;k<N;k++){ foodRise[k]+=sc*c.blood[k]; } }); }
+
+    var iob = (state.start && state.start.iob) ? state.start.iob : 0;
+    var Wms=Math.max(1, s.dia)*60*60000;
+    var insDrop=new Array(N).fill(0);
+    for(var k=0;k<N;k++){ insDrop[k]= s.isf*iob*Math.max(0,Math.min(1,(absAt(k)-anchorT)/Wms)); }
+
+    var exCum=new Array(N).fill(0);
+    for(var k=1;k<N;k++){ exCum[k]=exCum[k-1]+(exAt(absAt(k-1))? s.exd*DT/60 : 0); }
+
+    var xRel=function(k){ return (absAt(k)-t0)/60000; };
+    var fc=[], noTab=[], gobS=[];
+    for(var k=0;k<N;k++){
+      var x=xRel(k);
+      if(k<anchorIdx){ fc.push({x:x,y:null}); noTab.push({x:x,y:null}); }
+      else{
+        var rise=(tabRise[k]-tabRise[anchorIdx])+(foodRise[k]-foodRise[anchorIdx]);
+        var drop=(insDrop[k]-insDrop[anchorIdx])+(exCum[k]-exCum[anchorIdx]);
+        var base=(S0!=null?S0:0);
+        fc.push({x:x,y:base+rise-drop});
+        noTab.push({x:x,y:base+(foodRise[k]-foodRise[anchorIdx])-drop});
+      }
+      gobS.push({x:x,y:gobArr[k]});
+    }
+
+    var nadV=1e9,nadX=0;
+    for(var k=nowIdx;k<N;k++){ if(fc[k].y!=null && fc[k].y<nadV){ nadV=fc[k].y; nadX=fc[k].x; } }
+    if(nadV===1e9){ nadV=null; }
+
+    var iobNow=iob;
+    var taken=tabs.reduce(function(a,e){return a+(e.t<=t0?e.grams:0);},0);
+
+    var actual=bgs.map(function(g){return {x:(g.t-t0)/60000,y:g.value};});
+    if(state.start) actual.push({x:(state.start.t-t0)/60000,y:state.start.bg,anchor:true});
+
+    return {fc:fc,noTab:noTab,gob:gobS,actual:actual,nadV:nadV,nadX:nadX,iobNow:iobNow,
+            dropToCome:s.isf*iobNow,gobNow:gobArr[nowIdx],taken:taken,S0:S0,hasTab:tabs.length>0,t0:t0};
+  }
+
+  var chart=null, vis={fc:true,noTab:true,gob:false,actual:true};
+  var bandPlugin={ id:'band', beforeDatasetsDraw:function(c){ var s=state.settings; var ya=c.chartArea, ctx=c.ctx, y=c.scales.y; if(!y)return; var top=y.getPixelForValue(s.hi), bot=y.getPixelForValue(s.lo); ctx.save(); ctx.fillStyle='rgba(22,163,74,0.08)'; ctx.fillRect(ya.left,Math.max(ya.top,top),ya.right-ya.left,Math.min(ya.bottom,bot)-Math.max(ya.top,top)); ctx.strokeStyle='rgba(220,38,38,0.5)'; ctx.setLineDash([4,4]); ctx.lineWidth=1; var ly=y.getPixelForValue(s.lo); ctx.beginPath(); ctx.moveTo(ya.left,ly); ctx.lineTo(ya.right,ly); ctx.stroke(); ctx.setLineDash([]); ctx.restore(); } };
+  var nowPlugin={ id:'nowl', afterDraw:function(c){ if(!c.scales.x)return; var x=c.scales.x.getPixelForValue(0), a=c.chartArea, ctx=c.ctx; ctx.save(); ctx.strokeStyle='#9aa3b1'; ctx.lineWidth=1; ctx.setLineDash([4,4]); ctx.beginPath(); ctx.moveTo(x,a.top); ctx.lineTo(x,a.bottom); ctx.stroke(); ctx.setLineDash([]); ctx.fillStyle='#9aa3b1'; ctx.font='11px IBM Plex Mono, monospace'; ctx.fillText('now',x+4,a.top+12); ctx.restore(); } };
+
+  function buildChart(sim){
+    var ds=[];
+    ds.push({label:'forecast',data:sim.fc,parsing:false,borderColor:'#2563EB',borderWidth:3,pointRadius:0,tension:.3,spanGaps:false,hidden:!vis.fc,order:1});
+    ds.push({label:'no tablets',data:sim.noTab,parsing:false,borderColor:'#9aa3b1',borderWidth:1.6,borderDash:[6,4],pointRadius:0,tension:.3,spanGaps:false,hidden:!vis.noTab,order:2});
+    if(sim.nadV!=null){ var col=sim.nadV<state.settings.lo?'#DC2626':(sim.nadV<state.settings.lo+15?'#D97706':'#16A34A'); ds.push({label:'low',data:[{x:sim.nadX,y:sim.nadV}],parsing:false,showLine:false,pointRadius:5,pointHoverRadius:6,borderColor:col,backgroundColor:col,order:0}); }
+    ds.push({label:'GOB',data:sim.gob,parsing:false,borderColor:'#D97706',backgroundColor:'rgba(217,119,6,.10)',borderWidth:1.4,pointRadius:0,tension:.3,yAxisID:'yG',fill:true,hidden:!vis.gob,order:4});
+    if(sim.actual.length) ds.push({label:'actual',data:sim.actual,parsing:false,showLine:false,borderColor:'#16A34A',backgroundColor:'#16A34A',pointRadius:4,pointHoverRadius:5,hidden:!vis.actual,order:0});
+    var opts={ responsive:true,maintainAspectRatio:false,animation:false,interaction:{mode:'nearest',intersect:false},
+      scales:{ x:{type:'linear',title:{display:true,text:'minutes (now = 0)',color:'#8A93A1',font:{size:11}},grid:{color:'rgba(0,0,0,.05)'},ticks:{stepSize:30,color:'#8A93A1',font:{family:'IBM Plex Mono'}}},
+        y:{suggestedMin:40,suggestedMax:240,title:{display:true,text:'BG (mg/dL)',color:'#8A93A1',font:{size:11}},grid:{color:'rgba(0,0,0,.05)'},ticks:{color:'#8A93A1',font:{family:'IBM Plex Mono'}}},
+        yG:{position:'right',title:{display:true,text:'glucose on board (g)',color:'#8A93A1',font:{size:11}},grid:{drawOnChartArea:false},min:0,display:vis.gob,ticks:{color:'#8A93A1',font:{family:'IBM Plex Mono'}}} },
+      plugins:{legend:{display:false},tooltip:{callbacks:{title:function(i){return Math.round(i[0].parsed.x)+' min';},label:function(c){ var l=c.dataset.label; if(l==='GOB')return 'On board: '+c.parsed.y.toFixed(1)+' g'; if(l==='actual')return (c.raw.anchor?'Start: ':'Actual: ')+Math.round(c.parsed.y)+' mg/dL'; if(l==='low')return 'Low: '+Math.round(c.parsed.y)+' mg/dL'; if(l==='no tablets')return 'No tablets: '+Math.round(c.parsed.y); return 'Forecast: '+Math.round(c.parsed.y)+' mg/dL'; }}}} };
+    if(chart){ chart.data.datasets=ds; chart.options=opts; chart.update('none'); }
+    else chart=new Chart(document.getElementById('chart'),{type:'line',data:{datasets:ds},options:opts,plugins:[bandPlugin,nowPlugin]});
+  }
+
+  function renderLegend(){
+    var el=document.getElementById('legend'); el.innerHTML='';
+    function item(key,label,style){ var sp=document.createElement('span'); sp.className=vis[key]?'':'off'; sp.innerHTML='<span class="swatch" style="'+style+'"></span>'+label; sp.onclick=function(){ vis[key]=!vis[key]; render(); }; el.appendChild(sp); }
+    function staticItem(label,style){ var sp=document.createElement('span'); sp.style.cursor='default'; sp.innerHTML='<span class="swatch '+(style.indexOf('height')>=0?'band':'')+'" style="'+style+'"></span>'+label; el.appendChild(sp); }
+    item('fc','forecast','border-top:3px solid #2563EB');
+    item('noTab','no tablets','border-top:3px dashed #9aa3b1');
+    item('actual','actual','border-top:3px solid #16A34A');
+    item('gob','glucose on board','border-top:3px solid #D97706');
+    staticItem('target range','height:11px;width:14px;background:rgba(22,163,74,0.25);border-radius:3px');
+  }
+
+  function render(){
+    var sim=simulate();
+    var nc=document.getElementById('nadirCard'), s=state.settings;
+    if(sim.nadV!=null && sim.S0!=null){
+      document.getElementById('nadirVal').textContent=Math.round(sim.nadV);
+      document.getElementById('nadirSub').textContent='at '+clock(sim.t0+sim.nadX*60000)+' (+'+Math.round(sim.nadX)+' min)';
+      nc.className='card '+(sim.nadV<s.lo?'flag-red':(sim.nadV<s.lo+15?'flag-amber':'flag-green'));
+    } else { document.getElementById('nadirVal').textContent='—'; document.getElementById('nadirSub').textContent='enter a starting BG'; nc.className='card'; }
+    document.getElementById('iobVal').textContent=sim.iobNow.toFixed(1);
+    document.getElementById('iobSub').textContent= sim.iobNow>0.01? ('drop to come \u2248 -'+Math.round(sim.dropToCome)+' mg/dL') : 'no insulin logged';
+    document.getElementById('gobVal').textContent=sim.gobNow.toFixed(1);
+    document.getElementById('gobSub').textContent=sim.taken.toFixed(0)+' g taken';
+    renderLog(); renderLegend(); buildChart(sim);
+  }
+
+  function tabStatus(e){ var dt=(now()-e.t)/60000; if(dt<10)return'absorbing'; if(dt<45)return'near peak'; if(dt<90)return'fading'; return'spent'; }
+  function renderLog(){
+    var box=document.getElementById('logBox');
+    var rows=state.events.slice();
+    state.exercise.forEach(function(s){ rows.push({type:'exercise',t:s.start,end:s.end}); });
+    if(state.start) rows.push({type:'start',t:state.start.t,bg:state.start.bg,iob:state.start.iob});
+    rows.sort(function(a,b){return b.t-a.t;});
+    if(!rows.length){ box.innerHTML='<div class="empty">Nothing logged yet.</div>'; return; }
+    var h='<table class="log"><thead><tr><th>Time</th><th>Event</th><th>Detail</th><th></th></tr></thead><tbody>';
+    rows.forEach(function(e){
+      var ago=Math.round((now()-e.t)/60000);
+      var time='<span class="num">'+clock(e.t)+'</span><div class="st num">'+(ago>=0?ago+'m ago':(-ago)+'m ahead')+'</div>';
+      var pill='',detail='',del='';
+      if(e.type==='tablet'){ pill='<span class="pill tab">tablet</span>'; detail='<span class="num">'+e.grams+' g</span> <span class="st">'+tabStatus(e)+'</span>'; del='<span class="x" data-del="'+e.id+'">\u2715</span>'; }
+      else if(e.type==='food'){ pill='<span class="pill food">food</span>'; detail='<span class="num">'+e.grams+' g</span> <span class="st">'+e.speed+'</span>'; del='<span class="x" data-del="'+e.id+'">\u2715</span>'; }
+      else if(e.type==='bg'){ pill='<span class="pill bg">reading</span>'; detail='<span class="num">'+e.value+' mg/dL</span>'; del='<span class="x" data-del="'+e.id+'">\u2715</span>'; }
+      else if(e.type==='start'){ pill='<span class="pill bg">now</span>'; detail='<span class="num">'+e.bg+' mg/dL'+((e.iob)?' / '+e.iob+' u IOB':'')+'</span>'; del='<span class="x" data-delstart="1">\u2715</span>'; }
+      else if(e.type==='exercise'){ pill='<span class="pill ex">exercise</span>'; detail=e.end?('<span class="num">'+clock(e.t)+'\u2013'+clock(e.end)+'</span>'):'<span class="st">ongoing</span>'; }
+      h+='<tr><td>'+time+'</td><td>'+pill+'</td><td>'+detail+'</td><td style="text-align:right">'+del+'</td></tr>';
+    });
+    h+='</tbody></table>'; box.innerHTML=h;
+    box.querySelectorAll('[data-del]').forEach(function(b){ b.onclick=function(){ var id=b.getAttribute('data-del'); state.events=state.events.filter(function(e){return e.id!==id;}); persist(); render(); }; });
+    box.querySelectorAll('[data-delstart]').forEach(function(b){ b.onclick=function(){ state.start=null; persist(); render(); }; });
+  }
+
+  function setStart(){ var v=parseFloat(document.getElementById('startBg').value); var io=parseFloat(document.getElementById('startIob').value); var ago=parseFloat(document.getElementById('startAgo').value)||0; if(isNaN(v))return; state.start={bg:v,iob:isNaN(io)?0:io,t:now()-ago*60000}; persist(); render(); }
+  function addTablet(){ var g=parseFloat(document.getElementById('grams').value)||0; var ago=parseFloat(document.getElementById('minAgo').value)||0; if(g<=0)return; state.events.push({id:uid(),type:'tablet',t:now()-ago*60000,grams:g}); document.getElementById('minAgo').value=0; state.defaultGrams=g; persist(); render(); }
+  function bump(d){ var i=document.getElementById('grams'); var v=(parseFloat(i.value)||0)+d; if(v<0)v=0; i.value=v; }
+  function toggleEx(){ if(exercisingNow()) state.exercise[state.exercise.length-1].end=now(); else state.exercise.push({start:now(),end:null}); setExBtn(); persist(); render(); }
+  function setExBtn(){ var b=document.getElementById('exBtn'),on=exercisingNow(); b.textContent='Exercising: '+(on?'on':'off'); b.className='toggle'+(on?' on':''); }
+  function addFood(){ var v=parseFloat(document.getElementById('foodVal').value); var ago=parseFloat(document.getElementById('foodAgo').value)||0; if(isNaN(v)||v<=0)return; state.events.push({id:uid(),type:'food',t:now()-ago*60000,grams:v,speed:document.getElementById('foodSpeed').value}); document.getElementById('foodVal').value=''; document.getElementById('foodAgo').value=0; persist(); render(); }
+
+  function setTab(food){ state.includeFood=food; document.getElementById('tab1').classList.toggle('active',!food); document.getElementById('tab2').classList.toggle('active',food); document.getElementById('foodPanel').classList.toggle('hide',!food); persist(); render(); }
+
+  function loadSettingsUI(){ var s=state.settings;
+    document.getElementById('set_isf').value=s.isf; document.getElementById('set_dia').value=s.dia; document.getElementById('set_mgg').value=s.mgg;
+    document.getElementById('set_exd').value=s.exd; document.getElementById('set_ka').value=s.ka; document.getElementById('set_ke').value=s.ke;
+    document.getElementById('set_exf').value=s.exf; document.getElementById('set_lo').value=s.lo; document.getElementById('set_hi').value=s.hi; document.getElementById('set_api').value=s.api;
+    document.getElementById('grams').value=state.defaultGrams||4;
+  }
+  function saveSettings(){ var s=state.settings;
+    s.isf=parseFloat(document.getElementById('set_isf').value)||50; s.dia=parseFloat(document.getElementById('set_dia').value)||3;
+    s.mgg=parseFloat(document.getElementById('set_mgg').value)||2; s.exd=parseFloat(document.getElementById('set_exd').value)||0;
+    s.ka=parseFloat(document.getElementById('set_ka').value)||0.035; s.ke=parseFloat(document.getElementById('set_ke').value)||0.018;
+    s.exf=parseFloat(document.getElementById('set_exf').value)||2.2; s.lo=parseFloat(document.getElementById('set_lo').value)||70; s.hi=parseFloat(document.getElementById('set_hi').value)||180;
+    s.api=(document.getElementById('set_api').value||'').trim()||defaults.settings.api; persist(); render();
+    var st=document.getElementById('setStatus'); st.textContent='Saved.'; setTimeout(function(){st.textContent='';},1500);
+  }
+  function resetAll(){ if(!confirm('Delete all events and reset settings?'))return; state=JSON.parse(JSON.stringify(defaults)); persist(); loadSettingsUI(); setExBtn(); setTab(false); render(); }
+
+  async function callClaude(system,userText){
+    var body={model:"claude-sonnet-4-20250514",max_tokens:1000,system:system,messages:[{role:"user",content:userText}]};
+    var headers={"Content-Type":"application/json"};
+    if(sessionKey){ headers["x-api-key"]=sessionKey; headers["anthropic-version"]="2023-06-01"; headers["anthropic-dangerous-direct-browser-access"]="true"; }
+    var res=await fetch(state.settings.api,{method:"POST",headers:headers,body:JSON.stringify(body)});
+    if(!res.ok) throw new Error("HTTP "+res.status+(res.status===401?" \u2014 check your API key":""));
+    var data=await res.json();
+    return (data.content||[]).filter(function(b){return b.type==='text';}).map(function(b){return b.text;}).join("\n").trim();
+  }
+  async function analyze(){ var out=document.getElementById('aiOut'), st=document.getElementById('aiStatus'); st.textContent='Analysing...';
+    try{
+      var pay={ settings:state.settings, includeFood:state.includeFood, startBG:state.start?state.start.bg:null, iob:state.start?state.start.iob:null,
+        tablets:state.events.filter(function(e){return e.type==='tablet';}).map(function(e){return {grams:e.grams,minAgo:Math.round((now()-e.t)/60000)};}),
+        food:state.events.filter(function(e){return e.type==='food';}).map(function(e){return {grams:e.grams,speed:e.speed,minAgo:Math.round((now()-e.t)/60000)};}),
+        readings:state.events.filter(function(e){return e.type==='bg';}).map(function(e){return {mgdl:e.value,minAgo:Math.round((now()-e.t)/60000)};}) };
+      var sys='You help analyse a glucose-tablet/insulin offset log for a type 1 diabetic. Compare modelled forecast vs actual readings. In under 140 words: (1) do tablets or insulin appear stronger/weaker or faster/slower than modelled; (2) suggest one concrete calibration tweak (which setting, which direction); (3) flag any low-risk or timing concern. Plain and practical. Informational only: do NOT give insulin or carb dosing instructions; remind them to confirm with a reading and their care team.';
+      out.style.display='block'; out.textContent=await callClaude(sys,JSON.stringify(pay)); st.textContent='';
+    }catch(e){ out.style.display='block'; out.textContent='AI request failed ('+e.message+'). Paste your Anthropic API key above to enable AI features on your live site.'; st.textContent=''; }
+  }
+
+  document.getElementById('tab1').onclick=function(){ setTab(false); };
+  document.getElementById('tab2').onclick=function(){ setTab(true); };
+  document.getElementById('setStart').onclick=setStart;
+  document.getElementById('addTablet').onclick=addTablet;
+  document.getElementById('gMinus').onclick=function(){bump(-0.5);};
+  document.getElementById('gPlus').onclick=function(){bump(0.5);};
+  document.getElementById('exBtn').onclick=toggleEx;
+  document.getElementById('addFood').onclick=addFood;
+  document.getElementById('saveSettings').onclick=saveSettings;
+  document.getElementById('resetAll').onclick=resetAll;
+  document.getElementById('analyzeBtn').onclick=analyze;
+
+  var KEYSTORE="glucoseTimerKey_v1";
+  try{ var rk=localStorage.getItem(KEYSTORE); if(rk){ sessionKey=rk; document.getElementById('apiKey').value=rk; document.getElementById('rememberKey').checked=true; } }catch(e){}
+  document.getElementById('apiKey').addEventListener('input',function(e){ sessionKey=e.target.value.trim(); if(document.getElementById('rememberKey').checked){ try{ localStorage.setItem(KEYSTORE,sessionKey); }catch(err){} } });
+  document.getElementById('rememberKey').addEventListener('change',function(e){ try{ if(e.target.checked) localStorage.setItem(KEYSTORE,sessionKey||''); else localStorage.removeItem(KEYSTORE); }catch(err){} });
+
+  loadSettingsUI(); setExBtn(); setTab(state.includeFood); render();
+  setInterval(render,5000);
+})();
+</script>
+</body>
+</html>
