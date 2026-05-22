@@ -159,6 +159,7 @@
         <div class="stepper"><button id="gMinus" aria-label="less">&#8211;</button><input class="num" id="grams" type="number" min="0" step="0.5" value="4"/><button id="gPlus" aria-label="more">+</button></div>
       </div>
       <div class="field w-sm"><label class="fl">taken min ago</label><input class="num" id="minAgo" type="number" min="0" step="1" value="0"/></div>
+      <div class="field w-sm"><label class="fl">exercise for (min)</label><input class="num" id="exDur" type="number" min="0" step="5" value="0" placeholder="0 = open"/></div>
       <div class="field"><label class="fl">non-insulin burn</label><button class="toggle" id="exBtn">Exercising: off</button></div>
     </div>
   </div>
@@ -205,9 +206,7 @@
         <div class="field"><label class="fl">Insulin action ahead (hours)</label><input class="num" id="set_dia" type="number" step="0.5" value="2.5"/><div class="help">How long the on-board insulin keeps acting from now. Sets the drop's timing only; tune to taste.</div></div>
         <div class="field"><label class="fl">BG rise per gram glucose (mg/dL)</label><input class="num" id="set_mgg" type="number" step="0.1" value="2.0"/></div>
         <div class="field"><label class="fl">Exercise drain (mg/dL per hour)</label><input class="num" id="set_exd" type="number" step="5" value="40"/></div>
-        <div class="field"><label class="fl">Glucose absorption ka (/min)</label><input class="num" id="set_ka" type="number" step="0.005" value="0.035"/></div>
-        <div class="field"><label class="fl">Glucose consumption ke (/min)</label><input class="num" id="set_ke" type="number" step="0.002" value="0.018"/></div>
-        <div class="field"><label class="fl">Exercise multiplier on ke</label><input class="num" id="set_exf" type="number" step="0.1" value="2.2"/></div>
+        <div class="field"><label class="fl">Glucose absorption ka (/min)</label><input class="num" id="set_ka" type="number" step="0.005" value="0.035"/><div class="help">How fast a tablet's glucose lands. Higher = faster.</div></div>
         <div class="field"><label class="fl">Target range (mg/dL)</label><div class="row" style="gap:6px"><input class="num" id="set_lo" type="number" step="1" value="70" style="width:70px"/><span class="st">to</span><input class="num" id="set_hi" type="number" step="1" value="180" style="width:70px"/></div></div>
       </div>
       <div class="field" style="margin-top:14px"><label class="fl">AI endpoint URL</label><input id="set_api" type="text" value="https://api.anthropic.com/v1/messages"/>
@@ -221,8 +220,8 @@
     <div class="panel modelnote" style="margin-top:8px">
       <p style="margin-top:0">The forecast anchors at your <code>starting BG</code> and projects forward only — the meter reading already contains everything that happened before it.</p>
       <p><b>Insulin</b> is the live on-board number you read off the Omnipod 5. The remaining drop is <code>ISF x IOB</code>, spread evenly over the "insulin action ahead" window. Real insulin is front-loaded, so the depth of the low is solid but its timing is approximate.</p>
-      <p><b>Glucose tablets</b> raise BG on a two-compartment curve (peak ~40 min). <b>Food carbs</b> (second tab) use the same shape but slower, scaled by the chosen absorption speed.</p>
-      <p><b>Exercising</b> adds a steady BG drain and speeds glucose consumption while toggled on.</p>
+      <p><b>Glucose &amp; food</b> add a BG credit as they absorb (fast for tablets, slower for food) that then <i>persists</i> &mdash; it doesn't fade on its own. What pulls it back down is the insulin and exercise, so adding glucose lifts the whole forward curve, the trough included, by offsetting the insulin one-for-one.</p>
+      <p><b>Exercising</b> adds a steady BG drain for as long as it runs. Set an intended duration, or leave it at 0 (open) and toggle off when you stop.</p>
       <p><b>Predicted low</b> is the lowest point of the forward curve. It's a planning estimate, not a guarantee — verify with a reading, especially before deciding not to treat.</p>
     </div>
   </details>
@@ -252,7 +251,8 @@
   function now(){ return Date.now(); }
   function clock(ms){ return new Date(ms).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}); }
   function exAt(ms){ for(var i=0;i<state.exercise.length;i++){ var s=state.exercise[i]; if(ms>=s.start&&(s.end==null||ms<=s.end)) return true; } return false; }
-  function exercisingNow(){ var l=state.exercise[state.exercise.length-1]; return !!(l&&l.end==null); }
+  function activeExSession(){ var t=now(); for(var i=0;i<state.exercise.length;i++){ var s=state.exercise[i]; if(t>=s.start&&(s.end==null||t<=s.end)) return s; } return null; }
+  function exercisingNow(){ return !!activeExSession(); }
 
   function calibScale(ka,ke,mgg){ var g=1,b=0,pk=0; for(var k=0;k<700;k++){ if(b>pk)pk=b; var tr=ka*g,el=ke*b; g=Math.max(0,g-tr); b=Math.max(0,b+tr-el);} return mgg/(pk||1e-9); }
   var FOOD_KA={fast:0.025, med:0.015, slow:0.009};
@@ -273,22 +273,16 @@
     var tEnd=t0+HORIZON*60000;
     var N=Math.round((tEnd-tStart)/(DT*60000))+1;
     var absAt=function(k){ return tStart+k*DT*60000; };
-    var keFn=function(ms){ return exAt(ms)? s.ke*s.exf : s.ke; };
     var idxAt=function(ms){ return Math.max(0,Math.min(N-1,Math.round((ms-tStart)/(DT*60000)))); };
     var anchorIdx=idxAt(anchorT), nowIdx=idxAt(t0);
 
-    function bloodCurve(grams,doseIdx,ka){
-      var blood=new Array(N).fill(0), gob=new Array(N).fill(0), g=0,b=0;
-      for(var k=0;k<N;k++){ if(k===doseIdx)g+=grams; blood[k]=b; gob[k]=g+b; var ke=keFn(absAt(k)); var tr=ka*g,el=ke*b; g=Math.max(0,g-tr); b=Math.max(0,b+tr-el);} 
-      return {blood:blood,gob:gob};
-    }
-    var Sglu=calibScale(s.ka,s.ke,s.mgg);
-
-    var tabRise=new Array(N).fill(0), gobArr=new Array(N).fill(0);
-    tabs.forEach(function(t){ var c=bloodCurve(t.grams,idxAt(t.t),s.ka); for(var k=0;k<N;k++){ tabRise[k]+=Sglu*c.blood[k]; gobArr[k]+=c.gob[k]; } });
-
-    var foodRise=new Array(N).fill(0);
-    if(state.includeFood){ foods.forEach(function(f){ var ka=FOOD_KA[f.speed]||FOOD_KA.med; var sc=calibScale(ka,s.ke,s.mgg); var c=bloodCurve(f.grams,idxAt(f.t),ka); for(var k=0;k<N;k++){ foodRise[k]+=sc*c.blood[k]; } }); }
+    // Carbs add a glucose CREDIT that persists once absorbed; the only things that pull it
+    // back down are the explicit insulin and exercise terms below (no self-decay -- that was
+    // the double-count). credit_i(t) = grams * mgg * (1 - e^(-ka*minsSinceDose)); gut-remaining
+    // (not yet absorbed) = grams * e^(-ka*minsSinceDose).
+    var tabRise=new Array(N).fill(0), foodRise=new Array(N).fill(0), gobArr=new Array(N).fill(0);
+    tabs.forEach(function(t){ for(var k=0;k<N;k++){ var dt=(absAt(k)-t.t)/60000; if(dt<=0)continue; var ab=1-Math.exp(-s.ka*dt); tabRise[k]+=t.grams*s.mgg*ab; gobArr[k]+=t.grams*(1-ab); } });
+    if(state.includeFood){ foods.forEach(function(f){ var ka=FOOD_KA[f.speed]||FOOD_KA.med; for(var k=0;k<N;k++){ var dt=(absAt(k)-f.t)/60000; if(dt<=0)continue; foodRise[k]+=f.grams*s.mgg*(1-Math.exp(-ka*dt)); } }); }
 
     var iob = (state.start && state.start.iob) ? state.start.iob : 0;
     var Wms=Math.max(1, s.dia)*60*60000;
@@ -369,7 +363,7 @@
     document.getElementById('iobVal').textContent=sim.iobNow.toFixed(1);
     document.getElementById('iobSub').textContent= sim.iobNow>0.01? ('drop to come \u2248 -'+Math.round(sim.dropToCome)+' mg/dL') : 'no insulin logged';
     document.getElementById('gobVal').textContent=sim.gobNow.toFixed(1);
-    document.getElementById('gobSub').textContent=sim.taken.toFixed(0)+' g taken';
+    document.getElementById('gobSub').textContent=sim.taken.toFixed(0)+' g taken \u00b7 '+sim.gobNow.toFixed(1)+' g still to absorb';
     renderLog(); renderLegend(); buildChart(sim);
   }
 
@@ -401,23 +395,23 @@
   function setStart(){ var v=parseFloat(document.getElementById('startBg').value); var io=parseFloat(document.getElementById('startIob').value); var ago=parseFloat(document.getElementById('startAgo').value)||0; if(isNaN(v))return; state.start={bg:v,iob:isNaN(io)?0:io,t:now()-ago*60000}; persist(); render(); }
   function addTablet(){ var g=parseFloat(document.getElementById('grams').value)||0; var ago=parseFloat(document.getElementById('minAgo').value)||0; if(g<=0)return; state.events.push({id:uid(),type:'tablet',t:now()-ago*60000,grams:g}); document.getElementById('minAgo').value=0; state.defaultGrams=g; persist(); render(); }
   function bump(d){ var i=document.getElementById('grams'); var v=(parseFloat(i.value)||0)+d; if(v<0)v=0; i.value=v; }
-  function toggleEx(){ if(exercisingNow()) state.exercise[state.exercise.length-1].end=now(); else state.exercise.push({start:now(),end:null}); setExBtn(); persist(); render(); }
-  function setExBtn(){ var b=document.getElementById('exBtn'),on=exercisingNow(); b.textContent='Exercising: '+(on?'on':'off'); b.className='toggle'+(on?' on':''); }
+  function toggleEx(){ var a=activeExSession(); if(a){ a.end=now(); } else { var dur=parseFloat(document.getElementById('exDur').value)||0; state.exercise.push({start:now(), end: dur>0? now()+dur*60000 : null}); } setExBtn(); persist(); render(); }
+  function setExBtn(){ var b=document.getElementById('exBtn'),a=activeExSession(); if(a){ b.className='toggle on'; b.textContent= a.end? ('Exercising \u2192 '+clock(a.end)) : 'Exercising: on'; } else { b.className='toggle'; b.textContent='Exercising: off'; } }
   function addFood(){ var v=parseFloat(document.getElementById('foodVal').value); var ago=parseFloat(document.getElementById('foodAgo').value)||0; if(isNaN(v)||v<=0)return; state.events.push({id:uid(),type:'food',t:now()-ago*60000,grams:v,speed:document.getElementById('foodSpeed').value}); document.getElementById('foodVal').value=''; document.getElementById('foodAgo').value=0; persist(); render(); }
 
   function setTab(food){ state.includeFood=food; document.getElementById('tab1').classList.toggle('active',!food); document.getElementById('tab2').classList.toggle('active',food); document.getElementById('foodPanel').classList.toggle('hide',!food); persist(); render(); }
 
   function loadSettingsUI(){ var s=state.settings;
     document.getElementById('set_isf').value=s.isf; document.getElementById('set_dia').value=s.dia; document.getElementById('set_mgg').value=s.mgg;
-    document.getElementById('set_exd').value=s.exd; document.getElementById('set_ka').value=s.ka; document.getElementById('set_ke').value=s.ke;
-    document.getElementById('set_exf').value=s.exf; document.getElementById('set_lo').value=s.lo; document.getElementById('set_hi').value=s.hi; document.getElementById('set_api').value=s.api;
+    document.getElementById('set_exd').value=s.exd; document.getElementById('set_ka').value=s.ka;
+    document.getElementById('set_lo').value=s.lo; document.getElementById('set_hi').value=s.hi; document.getElementById('set_api').value=s.api;
     document.getElementById('grams').value=state.defaultGrams||4;
   }
   function saveSettings(){ var s=state.settings;
     s.isf=parseFloat(document.getElementById('set_isf').value)||50; s.dia=parseFloat(document.getElementById('set_dia').value)||3;
     s.mgg=parseFloat(document.getElementById('set_mgg').value)||2; s.exd=parseFloat(document.getElementById('set_exd').value)||0;
-    s.ka=parseFloat(document.getElementById('set_ka').value)||0.035; s.ke=parseFloat(document.getElementById('set_ke').value)||0.018;
-    s.exf=parseFloat(document.getElementById('set_exf').value)||2.2; s.lo=parseFloat(document.getElementById('set_lo').value)||70; s.hi=parseFloat(document.getElementById('set_hi').value)||180;
+    s.ka=parseFloat(document.getElementById('set_ka').value)||0.035;
+    s.lo=parseFloat(document.getElementById('set_lo').value)||70; s.hi=parseFloat(document.getElementById('set_hi').value)||180;
     s.api=(document.getElementById('set_api').value||'').trim()||defaults.settings.api; persist(); render();
     var st=document.getElementById('setStatus'); st.textContent='Saved.'; setTimeout(function(){st.textContent='';},1500);
   }
