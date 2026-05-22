@@ -196,9 +196,20 @@
   </details>
 
   <div class="panel">
-    <div class="sec-title" style="display:flex;justify-content:space-between;align-items:center">Events <button id="clearEvents" class="danger-ghost" style="font-weight:400;padding:5px 10px">Clear all</button></div>
+    <div class="sec-title" style="display:flex;justify-content:space-between;align-items:center"><span>Events</span><span style="display:flex;gap:6px"><button id="saveCycle" class="primary" style="font-weight:500;padding:5px 12px">Save cycle</button><button id="clearEvents" class="danger-ghost" style="font-weight:400;padding:5px 10px">Clear all</button></span></div>
     <div id="logBox"><div class="empty">Nothing logged yet.</div></div>
   </div>
+
+  <details id="archiveDetails">
+    <summary>Archive &mdash; saved cycles (<span id="archiveCount">0</span>)</summary>
+    <div class="panel" style="margin-top:8px">
+      <div class="help" style="margin-top:0">Each "Save cycle" stores a snapshot of the situation, the settings used, and the predicted-vs-actual outcome &mdash; so you can spot patterns over time. Stored locally on this device; survives "Clear all" and "Reset". Save a cycle, then Clear all to start the next one.</div>
+      <div id="archiveBox"><div class="empty">No saved cycles yet.</div></div>
+      <div class="row" style="margin-top:12px;align-items:center"><button id="analyzeArchive" class="primary">Analyse across cycles</button><button id="clearArchive" class="danger-ghost">Clear archive</button></div>
+      <div class="ai-out" id="archOut"></div>
+      <div class="status" id="archStatus"></div>
+    </div>
+  </details>
 
   <details>
     <summary>AI assistant (optional)</summary>
@@ -256,6 +267,9 @@
   var mem=null;
   function load(){ try{ var s=localStorage.getItem(KEY); return s?JSON.parse(s):null; }catch(e){ return mem; } }
   function persist(){ try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){ mem=state; } }
+  var AKEY="glucoseTimerArchive_v1", amem=[];
+  function loadArchive(){ try{ var s=localStorage.getItem(AKEY); return s?JSON.parse(s):[]; }catch(e){ return amem; } }
+  function saveArchive(){ try{ localStorage.setItem(AKEY, JSON.stringify(archive)); }catch(e){ amem=archive; } }
 
   var defaults={
     events:[], exercise:[], start:null, includeFood:false,
@@ -266,6 +280,7 @@
   for(var k in defaults.settings){ if(state.settings[k]===undefined) state.settings[k]=defaults.settings[k]; }
   if(state.includeFood===undefined) state.includeFood=false;
   if(state.start===undefined) state.start=null;
+  var archive=loadArchive();
 
   function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
   function now(){ return Date.now(); }
@@ -426,6 +441,69 @@
     box.querySelectorAll('[data-delex]').forEach(function(b){ b.onclick=function(){ var i=parseInt(b.getAttribute('data-delex'),10); state.exercise.splice(i,1); persist(); setExBtn(); render(); }; });
   }
 
+  // ---------- archive ----------
+  function cycleMetrics(sim){
+    var bgs=state.events.filter(function(e){return e.type==='bg';}).map(function(e){return e.value;});
+    if(state.start) bgs.push(state.start.bg);
+    var actualMin = bgs.length? Math.min.apply(null,bgs) : null;
+    var tabs=state.events.filter(function(e){return e.type==='tablet';});
+    return { predLow: sim.nadV!=null?Math.round(sim.nadV):null, predLowMin: Math.round(sim.nadX||0),
+             actualMin: actualMin, nReadings: state.events.filter(function(e){return e.type==='bg';}).length,
+             nTablets: tabs.length, totalG: tabs.reduce(function(a,e){return a+e.grams;},0),
+             hadExercise: state.exercise.length>0 };
+  }
+  function saveCycle(){
+    if(!state.start && state.events.length===0){ alert('Nothing to save yet \u2014 set a starting BG/IOB and log some events first.'); return; }
+    var label=prompt('Label for this cycle (optional):','');
+    if(label===null) return; // cancelled
+    var snap={ id:uid(), savedAt:now(), label:(label||'').trim(),
+               settings:JSON.parse(JSON.stringify(state.settings)),
+               start:state.start?JSON.parse(JSON.stringify(state.start)):null,
+               includeFood:state.includeFood,
+               events:JSON.parse(JSON.stringify(state.events)),
+               exercise:JSON.parse(JSON.stringify(state.exercise)),
+               metrics:cycleMetrics(simulate()) };
+    archive.unshift(snap); saveArchive(); renderArchive();
+    if(confirm('Cycle saved to archive. Clear the current events to start a fresh cycle?')) clearEvents(true);
+  }
+  function renderArchive(){
+    document.getElementById('archiveCount').textContent=archive.length;
+    var box=document.getElementById('archiveBox');
+    if(!archive.length){ box.innerHTML='<div class="empty">No saved cycles yet.</div>'; return; }
+    var h='<table class="log"><thead><tr><th>Saved</th><th>Cycle</th><th>Low: pred / actual</th><th></th></tr></thead><tbody>';
+    archive.forEach(function(c){
+      var when=new Date(c.savedAt).toLocaleDateString([], {month:'short',day:'numeric'})+' '+new Date(c.savedAt).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'});
+      var m=c.metrics||{};
+      var desc=(c.label?('<b>'+c.label+'</b> &middot; '):'')+(c.start?(c.start.bg+' mg/dL / '+(c.start.iob||0)+'u'):'no anchor')+' &middot; '+(m.nTablets||0)+' tab, '+(m.nReadings||0)+' read'+(m.hadExercise?', exer':'');
+      var low=(m.predLow!=null?m.predLow:'\u2014')+' / '+(m.actualMin!=null?m.actualMin:'\u2014');
+      h+='<tr><td><span class="num">'+when+'</span></td><td class="st">'+desc+'</td><td class="num">'+low+'</td><td style="text-align:right"><span class="x" data-delarch="'+c.id+'">\u2715</span></td></tr>';
+    });
+    h+='</tbody></table>'; box.innerHTML=h;
+    box.querySelectorAll('[data-delarch]').forEach(function(b){ b.onclick=function(){ var id=b.getAttribute('data-delarch'); archive=archive.filter(function(c){return c.id!==id;}); saveArchive(); renderArchive(); }; });
+  }
+  function clearArchive(){ if(!archive.length)return; if(!confirm('Delete all '+archive.length+' saved cycles? This cannot be undone.'))return; archive=[]; saveArchive(); renderArchive(); }
+  async function analyzeArchive(){
+    var out=document.getElementById('archOut'), st=document.getElementById('archStatus');
+    if(!archive.length){ alert('No saved cycles to analyse yet.'); return; }
+    st.textContent='Analysing '+archive.length+' cycles...';
+    try{
+      var payload=archive.slice(0,30).map(function(c){
+        var st0=c.start?c.start.t:(c.events[0]?c.events[0].t:c.savedAt);
+        var reads=c.events.filter(function(e){return e.type==='bg';}).map(function(e){return {min:Math.round((e.t-st0)/60000),bg:e.value};}).sort(function(a,b){return a.min-b.min;});
+        var ex=c.exercise.reduce(function(a,s){return a+((s.end||c.savedAt)-s.start)/60000;},0);
+        return { when:new Date(c.savedAt).toISOString().slice(0,16), label:c.label,
+                 isf:c.settings.isf, lag:c.settings.lag, dia:c.settings.dia, mgg:c.settings.mgg, exd:c.settings.exd,
+                 startBG:c.start?c.start.bg:null, iob:c.start?c.start.iob:null,
+                 tablets_g:(c.metrics&&c.metrics.totalG)||0, food_on:c.includeFood,
+                 exercise_min:Math.round(ex),
+                 predLow:c.metrics?c.metrics.predLow:null, actualLow:c.metrics?c.metrics.actualMin:null,
+                 readings:reads };
+      });
+      var sys='You are reviewing multiple saved glucose cycles for a type 1 diabetic (units mg/dL). Each has the settings used (isf, onset lag, dia, mgg=BG rise per g glucose, exd=exercise drain/hr), the start BG/IOB, glucose given, exercise, and actual readings vs the model predLow. Across the set, in under 180 words: (1) does the model systematically over- or under-predict the low (compare actualLow vs predLow)? (2) do tablets, insulin, or exercise look stronger/weaker or faster/slower than the settings assume? (3) give 1-2 specific calibration changes with direction and rough size; (4) note any pattern (e.g. exercise cycles, larger doses). Plain and practical. Informational only: no insulin/carb dosing instructions; remind to confirm with readings and care team.';
+      out.style.display='block'; out.textContent=await callClaude(sys, JSON.stringify(payload)); st.textContent='';
+    }catch(e){ out.style.display='block'; out.textContent='AI request failed ('+e.message+'). Paste your Anthropic API key in the AI section to enable analysis.'; st.textContent=''; }
+  }
+
   function setStart(){ var v=parseFloat(document.getElementById('startBg').value); var io=parseFloat(document.getElementById('startIob').value); var ago=parseFloat(document.getElementById('startAgo').value)||0; if(isNaN(v))return; state.start={bg:v,iob:isNaN(io)?0:io,t:now()-ago*60000}; persist(); render(); }
   function addTablet(){ var g=parseFloat(document.getElementById('grams').value)||0; var ago=parseFloat(document.getElementById('minAgo').value)||0; if(g<=0)return; state.events.push({id:uid(),type:'tablet',t:now()-ago*60000,grams:g}); document.getElementById('minAgo').value=0; state.defaultGrams=g; persist(); render(); }
   function bump(d){ var i=document.getElementById('grams'); var v=(parseFloat(i.value)||0)+d; if(v<0)v=0; i.value=v; }
@@ -451,7 +529,7 @@
     var st=document.getElementById('setStatus'); st.textContent='Saved.'; setTimeout(function(){st.textContent='';},1500);
   }
   function resetAll(){ if(!confirm('Delete all events and reset settings?'))return; state=JSON.parse(JSON.stringify(defaults)); persist(); loadSettingsUI(); setExBtn(); setTab(false); render(); }
-  function clearEvents(){ if(!confirm('Clear all events (tablets, food, readings, exercise and the current BG/IOB)? Settings are kept.'))return; state.events=[]; state.exercise=[]; state.start=null; persist(); setExBtn(); render(); }
+  function clearEvents(silent){ if(!silent && !confirm('Clear all events (tablets, food, readings, exercise and the current BG/IOB)? Settings are kept.'))return; state.events=[]; state.exercise=[]; state.start=null; persist(); setExBtn(); render(); }
 
   async function callClaude(system,userText){
     var body={model:"claude-sonnet-4-20250514",max_tokens:1000,system:system,messages:[{role:"user",content:userText}]};
@@ -485,7 +563,10 @@
   document.getElementById('addBg').onclick=addBg;
   document.getElementById('saveSettings').onclick=saveSettings;
   document.getElementById('resetAll').onclick=resetAll;
-  document.getElementById('clearEvents').onclick=clearEvents;
+  document.getElementById('clearEvents').onclick=function(){ clearEvents(false); };
+  document.getElementById('saveCycle').onclick=saveCycle;
+  document.getElementById('analyzeArchive').onclick=analyzeArchive;
+  document.getElementById('clearArchive').onclick=clearArchive;
   document.getElementById('analyzeBtn').onclick=analyze;
 
   var KEYSTORE="glucoseTimerKey_v1";
@@ -493,7 +574,7 @@
   document.getElementById('apiKey').addEventListener('input',function(e){ sessionKey=e.target.value.trim(); if(document.getElementById('rememberKey').checked){ try{ localStorage.setItem(KEYSTORE,sessionKey); }catch(err){} } });
   document.getElementById('rememberKey').addEventListener('change',function(e){ try{ if(e.target.checked) localStorage.setItem(KEYSTORE,sessionKey||''); else localStorage.removeItem(KEYSTORE); }catch(err){} });
 
-  loadSettingsUI(); setExBtn(); setTab(state.includeFood); render();
+  loadSettingsUI(); setExBtn(); setTab(state.includeFood); renderArchive(); render();
   setInterval(render,5000);
 })();
 </script>
