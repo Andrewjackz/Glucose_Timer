@@ -34,8 +34,9 @@
   .tab:hover{color:var(--ink)}
   .tab.active{color:var(--blue);border-bottom-color:var(--blue)}
 
-  .cards{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
-  @media(max-width:560px){.cards{grid-template-columns:1fr}}
+  .cards{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
+  @media(max-width:680px){.cards{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:420px){.cards{grid-template-columns:1fr}}
   .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:13px 15px}
   .card.flag-red{border-color:#e7b4b4;background:#FFF6F5}
   .card.flag-amber{border-color:#ecd29a;background:#FFFBF2}
@@ -138,6 +139,7 @@
       <div class="field w-sm"><label class="fl">exercise for (min)</label><input class="num" id="exDur" type="number" min="0" step="5" value="0" placeholder="0 = open"/></div>
       <div class="field"><label class="fl">non-insulin burn</label><button class="toggle" id="exBtn">Exercising: off</button></div>
     </div>
+    <div class="help">Toggle exercise on for a non-insulin burn. Set "exercise for" to cap how long it runs &mdash; you can change it mid-session. Left at 0, the burn stays open and continues for the whole forecast until you toggle off.</div>
   </div>
 
   <div class="panel hide" id="foodPanel">
@@ -158,6 +160,11 @@
       <div class="big num"><span id="nadirVal">—</span><span class="u">mg/dL</span></div>
       <div class="sub" id="nadirSub">enter a starting BG</div>
     </div>
+    <div class="card" id="predNowCard">
+      <div class="lab"><span class="dot b"></span>Predicted now</div>
+      <div class="big num"><span id="predNowVal">—</span><span class="u">mg/dL</span></div>
+      <div class="sub" id="predNowSub">set a starting BG</div>
+    </div>
     <div class="card">
       <div class="lab"><span class="dot r"></span>Insulin on board</div>
       <div class="big num"><span id="iobVal">0.0</span><span class="u">u</span></div>
@@ -175,6 +182,18 @@
     <div class="chartwrap"><canvas id="chart" role="img" aria-label="Forward forecast of absolute blood glucose with target range, predicted low point, and the path without tablets"></canvas></div>
     <div class="help">Forward forecast of absolute BG (now = 0). Green band = target range. The dashed line is the path with no tablets; the gap is what your tablets are buying you. Points are actual readings.</div>
   </div>
+
+  <details>
+    <summary>Log an actual reading (check vs forecast)</summary>
+    <div class="panel" style="margin-top:8px">
+      <div class="row">
+        <div class="field grow"><label class="fl">reading (mg/dL)</label><input class="num" id="bgVal" type="number" min="0" step="1" placeholder="e.g. 95"/></div>
+        <div class="field w-sm"><label class="fl">min ago</label><input class="num" id="bgAgo" type="number" min="0" step="1" value="0"/></div>
+        <div class="field"><label class="fl">&nbsp;</label><button id="addBg">Log reading</button></div>
+      </div>
+      <div class="help">Drops an actual reading onto the chart without re-anchoring, so you can watch how the forecast is tracking. The "Predicted now" card shows model vs your latest actual. (Use "Set now" up top instead to restart the forecast from a fresh BG/IOB.)</div>
+    </div>
+  </details>
 
   <div class="panel">
     <div class="sec-title" style="display:flex;justify-content:space-between;align-items:center">Events <button id="clearEvents" class="danger-ghost" style="font-weight:400;padding:5px 10px">Clear all</button></div>
@@ -319,8 +338,14 @@
     var actual=bgs.map(function(g){return {x:(g.t-t0)/60000,y:g.value};});
     if(state.start) actual.push({x:(state.start.t-t0)/60000,y:state.start.bg,anchor:true});
 
+    var predNow=(fc[nowIdx]&&fc[nowIdx].y!=null)?fc[nowIdx].y:null;
+    var lastBg=null; bgs.forEach(function(g){ if(!lastBg||g.t>lastBg.t) lastBg=g; });
+    var compare=null;
+    if(lastBg){ var pi=idxAt(lastBg.t); var pv=(fc[pi]&&fc[pi].y!=null)?fc[pi].y:null; if(pv!=null) compare={actual:lastBg.value,pred:pv,delta:lastBg.value-pv,ago:Math.round((t0-lastBg.t)/60000)}; }
+
     return {fc:fc,noTab:noTab,gob:gobS,actual:actual,nadV:nadV,nadX:nadX,iobNow:iobNow,
-            dropToCome:s.isf*iobNow,gobNow:gobArr[nowIdx],taken:taken,S0:S0,hasTab:tabs.length>0,t0:t0};
+            dropToCome:s.isf*iobNow,gobNow:gobArr[nowIdx],taken:taken,S0:S0,hasTab:tabs.length>0,t0:t0,
+            predNow:predNow,compare:compare};
   }
 
   var chart=null, vis={fc:true,noTab:true,gob:false,actual:true};
@@ -335,10 +360,10 @@
     ds.push({label:'GOB',data:sim.gob,parsing:false,borderColor:'#D97706',backgroundColor:'rgba(217,119,6,.10)',borderWidth:1.4,pointRadius:0,tension:.3,yAxisID:'yG',fill:true,hidden:!vis.gob,order:4});
     if(sim.actual.length) ds.push({label:'actual',data:sim.actual,parsing:false,showLine:false,borderColor:'#16A34A',backgroundColor:'#16A34A',pointRadius:4,pointHoverRadius:5,hidden:!vis.actual,order:0});
     var opts={ responsive:true,maintainAspectRatio:false,animation:false,interaction:{mode:'nearest',intersect:false},
-      scales:{ x:{type:'linear',title:{display:true,text:'minutes (now = 0)',color:'#8A93A1',font:{size:11}},grid:{color:'rgba(0,0,0,.05)'},ticks:{stepSize:30,color:'#8A93A1',font:{family:'IBM Plex Mono'}}},
+      scales:{ x:{type:'linear',title:{display:true,text:'clock time / minutes from now',color:'#8A93A1',font:{size:11}},grid:{color:'rgba(0,0,0,.05)'},ticks:{stepSize:30,color:'#8A93A1',font:{family:'IBM Plex Mono',size:10},callback:function(v){ var d=new Date(Date.now()+v*60000); var t=d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}); return [t, v===0?'now':(v>0?'+'+v:''+v)]; }}},
         y:{suggestedMin:40,suggestedMax:240,title:{display:true,text:'BG (mg/dL)',color:'#8A93A1',font:{size:11}},grid:{color:'rgba(0,0,0,.05)'},ticks:{color:'#8A93A1',font:{family:'IBM Plex Mono'}}},
         yG:{position:'right',title:{display:true,text:'glucose on board (g)',color:'#8A93A1',font:{size:11}},grid:{drawOnChartArea:false},min:0,display:vis.gob,ticks:{color:'#8A93A1',font:{family:'IBM Plex Mono'}}} },
-      plugins:{legend:{display:false},tooltip:{callbacks:{title:function(i){return Math.round(i[0].parsed.x)+' min';},label:function(c){ var l=c.dataset.label; if(l==='GOB')return 'On board: '+c.parsed.y.toFixed(1)+' g'; if(l==='actual')return (c.raw.anchor?'Start: ':'Actual: ')+Math.round(c.parsed.y)+' mg/dL'; if(l==='low')return 'Low: '+Math.round(c.parsed.y)+' mg/dL'; if(l==='no tablets')return 'No tablets: '+Math.round(c.parsed.y); return 'Forecast: '+Math.round(c.parsed.y)+' mg/dL'; }}}} };
+      plugins:{legend:{display:false},tooltip:{callbacks:{title:function(i){ var v=i[0].parsed.x; var d=new Date(Date.now()+v*60000); return d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})+'  ('+(v>=0?'+':'')+Math.round(v)+' min)'; },label:function(c){ var l=c.dataset.label; if(l==='GOB')return 'On board: '+c.parsed.y.toFixed(1)+' g'; if(l==='actual')return (c.raw.anchor?'Start: ':'Actual: ')+Math.round(c.parsed.y)+' mg/dL'; if(l==='low')return 'Low: '+Math.round(c.parsed.y)+' mg/dL'; if(l==='no tablets')return 'No tablets: '+Math.round(c.parsed.y); return 'Forecast: '+Math.round(c.parsed.y)+' mg/dL'; }}}} };
     if(chart){ chart.data.datasets=ds; chart.options=opts; chart.update('none'); }
     else chart=new Chart(document.getElementById('chart'),{type:'line',data:{datasets:ds},options:opts,plugins:[bandPlugin,nowPlugin]});
   }
@@ -362,6 +387,12 @@
       document.getElementById('nadirSub').textContent='at '+clock(sim.t0+sim.nadX*60000)+' (+'+Math.round(sim.nadX)+' min)';
       nc.className='card '+(sim.nadV<s.lo?'flag-red':(sim.nadV<s.lo+15?'flag-amber':'flag-green'));
     } else { document.getElementById('nadirVal').textContent='—'; document.getElementById('nadirSub').textContent='enter a starting BG'; nc.className='card'; }
+    var pc=document.getElementById('predNowCard');
+    if(sim.predNow!=null && sim.S0!=null){
+      document.getElementById('predNowVal').textContent=Math.round(sim.predNow);
+      if(sim.compare){ var d=Math.round(sim.compare.delta); var agoTxt=sim.compare.ago>0?(' '+sim.compare.ago+'m ago'):''; document.getElementById('predNowSub').textContent='actual '+Math.round(sim.compare.actual)+agoTxt+' vs model '+Math.round(sim.compare.pred)+' ('+(d>=0?'+':'')+d+')'; pc.className='card '+(Math.abs(sim.compare.delta)<=15?'flag-green':(Math.abs(sim.compare.delta)<=30?'flag-amber':'flag-red')); }
+      else { document.getElementById('predNowSub').textContent='log a reading to compare'; pc.className='card'; }
+    } else { document.getElementById('predNowVal').textContent='—'; document.getElementById('predNowSub').textContent='set a starting BG'; pc.className='card'; }
     document.getElementById('iobVal').textContent=sim.iobNow.toFixed(1);
     document.getElementById('iobSub').textContent= sim.iobNow>0.01? ('drop to come \u2248 -'+Math.round(sim.dropToCome)+' mg/dL') : 'no insulin logged';
     document.getElementById('gobVal').textContent=sim.gobNow.toFixed(1);
@@ -400,6 +431,7 @@
   function bump(d){ var i=document.getElementById('grams'); var v=(parseFloat(i.value)||0)+d; if(v<0)v=0; i.value=v; }
   function toggleEx(){ var a=activeExSession(); if(a){ a.end=now(); } else { var dur=parseFloat(document.getElementById('exDur').value)||0; state.exercise.push({start:now(), end: dur>0? now()+dur*60000 : null}); } setExBtn(); persist(); render(); }
   function setExBtn(){ var b=document.getElementById('exBtn'),a=activeExSession(); if(a){ b.className='toggle on'; b.textContent= a.end? ('Exercising \u2192 '+clock(a.end)) : 'Exercising: on'; } else { b.className='toggle'; b.textContent='Exercising: off'; } }
+  function addBg(){ var v=parseFloat(document.getElementById('bgVal').value); var ago=parseFloat(document.getElementById('bgAgo').value)||0; if(isNaN(v))return; state.events.push({id:uid(),type:'bg',t:now()-ago*60000,value:v}); document.getElementById('bgVal').value=''; document.getElementById('bgAgo').value=0; persist(); render(); }
   function addFood(){ var v=parseFloat(document.getElementById('foodVal').value); var ago=parseFloat(document.getElementById('foodAgo').value)||0; if(isNaN(v)||v<=0)return; state.events.push({id:uid(),type:'food',t:now()-ago*60000,grams:v,speed:document.getElementById('foodSpeed').value}); document.getElementById('foodVal').value=''; document.getElementById('foodAgo').value=0; persist(); render(); }
 
   function setTab(food){ state.includeFood=food; document.getElementById('tab1').classList.toggle('active',!food); document.getElementById('tab2').classList.toggle('active',food); document.getElementById('foodPanel').classList.toggle('hide',!food); persist(); render(); }
@@ -448,7 +480,9 @@
   document.getElementById('gMinus').onclick=function(){bump(-0.5);};
   document.getElementById('gPlus').onclick=function(){bump(0.5);};
   document.getElementById('exBtn').onclick=toggleEx;
+  document.getElementById('exDur').addEventListener('change',function(e){ var a=activeExSession(); if(!a)return; var dur=parseFloat(e.target.value)||0; a.end = dur>0 ? a.start+dur*60000 : null; persist(); setExBtn(); render(); });
   document.getElementById('addFood').onclick=addFood;
+  document.getElementById('addBg').onclick=addBg;
   document.getElementById('saveSettings').onclick=saveSettings;
   document.getElementById('resetAll').onclick=resetAll;
   document.getElementById('clearEvents').onclick=clearEvents;
