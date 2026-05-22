@@ -116,30 +116,6 @@
     <button class="tab" id="tab2" data-food="1">+ Food carbs</button>
   </div>
 
-  <div class="cards">
-    <div class="card" id="nadirCard">
-      <div class="lab"><span class="dot b"></span>Predicted low</div>
-      <div class="big num"><span id="nadirVal">—</span><span class="u">mg/dL</span></div>
-      <div class="sub" id="nadirSub">enter a starting BG</div>
-    </div>
-    <div class="card">
-      <div class="lab"><span class="dot r"></span>Insulin on board</div>
-      <div class="big num"><span id="iobVal">0.0</span><span class="u">u</span></div>
-      <div class="sub num" id="iobSub">no insulin logged</div>
-    </div>
-    <div class="card">
-      <div class="lab"><span class="dot a"></span>Glucose on board</div>
-      <div class="big num"><span id="gobVal">0.0</span><span class="u">g</span></div>
-      <div class="sub num" id="gobSub">0 g taken</div>
-    </div>
-  </div>
-
-  <div class="panel">
-    <div class="legend" id="legend"></div>
-    <div class="chartwrap"><canvas id="chart" role="img" aria-label="Forward forecast of absolute blood glucose with target range, predicted low point, and the path without tablets"></canvas></div>
-    <div class="help">Forward forecast of absolute BG (now = 0). Green band = target range. The dashed line is the path with no tablets; the gap is what your tablets are buying you. Points are actual readings.</div>
-  </div>
-
   <div class="panel">
     <div class="sec-title">Where you are now</div>
     <div class="row">
@@ -176,8 +152,32 @@
     <div class="help">Rough estimate of the slow rise from food still coming in. Fat/protein and GI vary a lot — treat it as indicative, and remember it pushes the forecast up (so leaving it out is the safer, lower estimate).</div>
   </div>
 
+  <div class="cards">
+    <div class="card" id="nadirCard">
+      <div class="lab"><span class="dot b"></span>Predicted low</div>
+      <div class="big num"><span id="nadirVal">—</span><span class="u">mg/dL</span></div>
+      <div class="sub" id="nadirSub">enter a starting BG</div>
+    </div>
+    <div class="card">
+      <div class="lab"><span class="dot r"></span>Insulin on board</div>
+      <div class="big num"><span id="iobVal">0.0</span><span class="u">u</span></div>
+      <div class="sub num" id="iobSub">no insulin logged</div>
+    </div>
+    <div class="card">
+      <div class="lab"><span class="dot a"></span>Glucose on board</div>
+      <div class="big num"><span id="gobVal">0.0</span><span class="u">g</span></div>
+      <div class="sub num" id="gobSub">0 g taken</div>
+    </div>
+  </div>
+
   <div class="panel">
-    <div class="sec-title">Events</div>
+    <div class="legend" id="legend"></div>
+    <div class="chartwrap"><canvas id="chart" role="img" aria-label="Forward forecast of absolute blood glucose with target range, predicted low point, and the path without tablets"></canvas></div>
+    <div class="help">Forward forecast of absolute BG (now = 0). Green band = target range. The dashed line is the path with no tablets; the gap is what your tablets are buying you. Points are actual readings.</div>
+  </div>
+
+  <div class="panel">
+    <div class="sec-title" style="display:flex;justify-content:space-between;align-items:center">Events <button id="clearEvents" class="danger-ghost" style="font-weight:400;padding:5px 10px">Clear all</button></div>
     <div id="logBox"><div class="empty">Nothing logged yet.</div></div>
   </div>
 
@@ -207,6 +207,7 @@
         <div class="field"><label class="fl">BG rise per gram glucose (mg/dL)</label><input class="num" id="set_mgg" type="number" step="0.1" value="2.0"/></div>
         <div class="field"><label class="fl">Exercise drain (mg/dL per hour)</label><input class="num" id="set_exd" type="number" step="5" value="40"/></div>
         <div class="field"><label class="fl">Glucose absorption ka (/min)</label><input class="num" id="set_ka" type="number" step="0.005" value="0.035"/><div class="help">How fast a tablet's glucose lands. Higher = faster.</div></div>
+        <div class="field"><label class="fl">Onset lag (min)</label><input class="num" id="set_lag" type="number" step="1" value="15"/><div class="help">Dead time before a tablet shows any effect. Lynette's real-world ~15 min.</div></div>
         <div class="field"><label class="fl">Target range (mg/dL)</label><div class="row" style="gap:6px"><input class="num" id="set_lo" type="number" step="1" value="70" style="width:70px"/><span class="st">to</span><input class="num" id="set_hi" type="number" step="1" value="180" style="width:70px"/></div></div>
       </div>
       <div class="field" style="margin-top:14px"><label class="fl">AI endpoint URL</label><input id="set_api" type="text" value="https://api.anthropic.com/v1/messages"/>
@@ -220,7 +221,7 @@
     <div class="panel modelnote" style="margin-top:8px">
       <p style="margin-top:0">The forecast anchors at your <code>starting BG</code> and projects forward only — the meter reading already contains everything that happened before it.</p>
       <p><b>Insulin</b> is the live on-board number you read off the Omnipod 5. The remaining drop is <code>ISF x IOB</code>, spread evenly over the "insulin action ahead" window. Real insulin is front-loaded, so the depth of the low is solid but its timing is approximate.</p>
-      <p><b>Glucose &amp; food</b> add a BG credit as they absorb (fast for tablets, slower for food) that then <i>persists</i> &mdash; it doesn't fade on its own. What pulls it back down is the insulin and exercise, so adding glucose lifts the whole forward curve, the trough included, by offsetting the insulin one-for-one.</p>
+      <p><b>Glucose &amp; food</b> start only after an onset lag (default 15 min, matching Lynette's real-world delay), then add a BG credit as they absorb (fast for tablets, slower for food) that <i>persists</i> &mdash; it doesn't fade on its own. What pulls it back down is the insulin and exercise, so adding glucose lifts the whole forward curve, the trough included, by offsetting the insulin one-for-one.</p>
       <p><b>Exercising</b> adds a steady BG drain for as long as it runs. Set an intended duration, or leave it at 0 (open) and toggle off when you stop.</p>
       <p><b>Predicted low</b> is the lowest point of the forward curve. It's a planning estimate, not a guarantee — verify with a reading, especially before deciding not to treat.</p>
     </div>
@@ -239,7 +240,7 @@
 
   var defaults={
     events:[], exercise:[], start:null, includeFood:false,
-    settings:{ isf:50, dia:3, mgg:2.0, exd:40, ka:0.035, ke:0.018, exf:2.2, lo:70, hi:180, api:"https://api.anthropic.com/v1/messages" },
+    settings:{ isf:50, dia:3, mgg:2.0, exd:40, ka:0.035, lag:15, ke:0.018, exf:2.2, lo:70, hi:180, api:"https://api.anthropic.com/v1/messages" },
     defaultGrams:4
   };
   var state=load()||JSON.parse(JSON.stringify(defaults));
@@ -281,8 +282,9 @@
     // the double-count). credit_i(t) = grams * mgg * (1 - e^(-ka*minsSinceDose)); gut-remaining
     // (not yet absorbed) = grams * e^(-ka*minsSinceDose).
     var tabRise=new Array(N).fill(0), foodRise=new Array(N).fill(0), gobArr=new Array(N).fill(0);
-    tabs.forEach(function(t){ for(var k=0;k<N;k++){ var dt=(absAt(k)-t.t)/60000; if(dt<=0)continue; var ab=1-Math.exp(-s.ka*dt); tabRise[k]+=t.grams*s.mgg*ab; gobArr[k]+=t.grams*(1-ab); } });
-    if(state.includeFood){ foods.forEach(function(f){ var ka=FOOD_KA[f.speed]||FOOD_KA.med; for(var k=0;k<N;k++){ var dt=(absAt(k)-f.t)/60000; if(dt<=0)continue; foodRise[k]+=f.grams*s.mgg*(1-Math.exp(-ka*dt)); } }); }
+    var lag=(s.lag||0);
+    tabs.forEach(function(t){ for(var k=0;k<N;k++){ var dt=(absAt(k)-t.t)/60000; if(dt<=0)continue; var et=dt-lag; var ab=et<=0?0:1-Math.exp(-s.ka*et); tabRise[k]+=t.grams*s.mgg*ab; gobArr[k]+=t.grams*(1-ab); } });
+    if(state.includeFood){ foods.forEach(function(f){ var ka=FOOD_KA[f.speed]||FOOD_KA.med; for(var k=0;k<N;k++){ var dt=(absAt(k)-f.t)/60000; if(dt<=0)continue; var et=dt-lag; foodRise[k]+=f.grams*s.mgg*(et<=0?0:1-Math.exp(-ka*et)); } }); }
 
     var iob = (state.start && state.start.iob) ? state.start.iob : 0;
     var Wms=Math.max(1, s.dia)*60*60000;
@@ -371,7 +373,7 @@
   function renderLog(){
     var box=document.getElementById('logBox');
     var rows=state.events.slice();
-    state.exercise.forEach(function(s){ rows.push({type:'exercise',t:s.start,end:s.end}); });
+    state.exercise.forEach(function(s,i){ rows.push({type:'exercise',t:s.start,end:s.end,exIdx:i}); });
     if(state.start) rows.push({type:'start',t:state.start.t,bg:state.start.bg,iob:state.start.iob});
     rows.sort(function(a,b){return b.t-a.t;});
     if(!rows.length){ box.innerHTML='<div class="empty">Nothing logged yet.</div>'; return; }
@@ -384,12 +386,13 @@
       else if(e.type==='food'){ pill='<span class="pill food">food</span>'; detail='<span class="num">'+e.grams+' g</span> <span class="st">'+e.speed+'</span>'; del='<span class="x" data-del="'+e.id+'">\u2715</span>'; }
       else if(e.type==='bg'){ pill='<span class="pill bg">reading</span>'; detail='<span class="num">'+e.value+' mg/dL</span>'; del='<span class="x" data-del="'+e.id+'">\u2715</span>'; }
       else if(e.type==='start'){ pill='<span class="pill bg">now</span>'; detail='<span class="num">'+e.bg+' mg/dL'+((e.iob)?' / '+e.iob+' u IOB':'')+'</span>'; del='<span class="x" data-delstart="1">\u2715</span>'; }
-      else if(e.type==='exercise'){ pill='<span class="pill ex">exercise</span>'; detail=e.end?('<span class="num">'+clock(e.t)+'\u2013'+clock(e.end)+'</span>'):'<span class="st">ongoing</span>'; }
+      else if(e.type==='exercise'){ pill='<span class="pill ex">exercise</span>'; detail=e.end?('<span class="num">'+clock(e.t)+'\u2013'+clock(e.end)+'</span>'):'<span class="st">ongoing</span>'; del='<span class="x" data-delex="'+e.exIdx+'">\u2715</span>'; }
       h+='<tr><td>'+time+'</td><td>'+pill+'</td><td>'+detail+'</td><td style="text-align:right">'+del+'</td></tr>';
     });
     h+='</tbody></table>'; box.innerHTML=h;
     box.querySelectorAll('[data-del]').forEach(function(b){ b.onclick=function(){ var id=b.getAttribute('data-del'); state.events=state.events.filter(function(e){return e.id!==id;}); persist(); render(); }; });
     box.querySelectorAll('[data-delstart]').forEach(function(b){ b.onclick=function(){ state.start=null; persist(); render(); }; });
+    box.querySelectorAll('[data-delex]').forEach(function(b){ b.onclick=function(){ var i=parseInt(b.getAttribute('data-delex'),10); state.exercise.splice(i,1); persist(); setExBtn(); render(); }; });
   }
 
   function setStart(){ var v=parseFloat(document.getElementById('startBg').value); var io=parseFloat(document.getElementById('startIob').value); var ago=parseFloat(document.getElementById('startAgo').value)||0; if(isNaN(v))return; state.start={bg:v,iob:isNaN(io)?0:io,t:now()-ago*60000}; persist(); render(); }
@@ -403,19 +406,20 @@
 
   function loadSettingsUI(){ var s=state.settings;
     document.getElementById('set_isf').value=s.isf; document.getElementById('set_dia').value=s.dia; document.getElementById('set_mgg').value=s.mgg;
-    document.getElementById('set_exd').value=s.exd; document.getElementById('set_ka').value=s.ka;
+    document.getElementById('set_exd').value=s.exd; document.getElementById('set_ka').value=s.ka; document.getElementById('set_lag').value=(s.lag!=null?s.lag:15);
     document.getElementById('set_lo').value=s.lo; document.getElementById('set_hi').value=s.hi; document.getElementById('set_api').value=s.api;
     document.getElementById('grams').value=state.defaultGrams||4;
   }
   function saveSettings(){ var s=state.settings;
     s.isf=parseFloat(document.getElementById('set_isf').value)||50; s.dia=parseFloat(document.getElementById('set_dia').value)||3;
     s.mgg=parseFloat(document.getElementById('set_mgg').value)||2; s.exd=parseFloat(document.getElementById('set_exd').value)||0;
-    s.ka=parseFloat(document.getElementById('set_ka').value)||0.035;
+    s.ka=parseFloat(document.getElementById('set_ka').value)||0.035; s.lag=parseFloat(document.getElementById('set_lag').value); if(isNaN(s.lag))s.lag=15;
     s.lo=parseFloat(document.getElementById('set_lo').value)||70; s.hi=parseFloat(document.getElementById('set_hi').value)||180;
     s.api=(document.getElementById('set_api').value||'').trim()||defaults.settings.api; persist(); render();
     var st=document.getElementById('setStatus'); st.textContent='Saved.'; setTimeout(function(){st.textContent='';},1500);
   }
   function resetAll(){ if(!confirm('Delete all events and reset settings?'))return; state=JSON.parse(JSON.stringify(defaults)); persist(); loadSettingsUI(); setExBtn(); setTab(false); render(); }
+  function clearEvents(){ if(!confirm('Clear all events (tablets, food, readings, exercise and the current BG/IOB)? Settings are kept.'))return; state.events=[]; state.exercise=[]; state.start=null; persist(); setExBtn(); render(); }
 
   async function callClaude(system,userText){
     var body={model:"claude-sonnet-4-20250514",max_tokens:1000,system:system,messages:[{role:"user",content:userText}]};
@@ -447,6 +451,7 @@
   document.getElementById('addFood').onclick=addFood;
   document.getElementById('saveSettings').onclick=saveSettings;
   document.getElementById('resetAll').onclick=resetAll;
+  document.getElementById('clearEvents').onclick=clearEvents;
   document.getElementById('analyzeBtn').onclick=analyze;
 
   var KEYSTORE="glucoseTimerKey_v1";
