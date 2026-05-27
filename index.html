@@ -90,6 +90,7 @@
   .pill.food{background:#EFE7FB;color:#5b3aa8}
   .st{font-size:12px;color:var(--muted)}
   .x{color:var(--faint);cursor:pointer;font-size:16px;padding:2px 6px;border-radius:6px}
+  .mini{font-size:12px;padding:3px 9px;border-radius:6px;margin-right:4px}
   .x:hover{background:#F2D9D9;color:var(--red)}
   .empty{color:var(--faint);font-size:14px;padding:14px 4px;text-align:center}
   details{margin-bottom:14px}
@@ -206,6 +207,7 @@
       <div class="help" style="margin-top:0">Each "Save cycle" stores a snapshot of the situation, the settings used, and the predicted-vs-actual outcome &mdash; so you can spot patterns over time. Stored locally on this device; survives "Clear all" and "Reset". Save a cycle, then Clear all to start the next one.</div>
       <div id="archiveBox"><div class="empty">No saved cycles yet.</div></div>
       <div class="row" style="margin-top:12px;align-items:center"><button id="analyzeArchive" class="primary">Analyse across cycles</button><button id="clearArchive" class="danger-ghost">Clear archive</button></div>
+      <div class="row" style="margin-top:8px;align-items:center"><span class="st">Download:</span><button id="dlXlsx" class="mini">Excel</button><button id="dlCsv" class="mini">CSV</button><button id="dlJson" class="mini">JSON</button></div>
       <div class="ai-out" id="archOut"></div>
       <div class="status" id="archStatus"></div>
     </div>
@@ -259,6 +261,7 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
 (function(){
   "use strict";
@@ -476,11 +479,61 @@
       var m=c.metrics||{};
       var desc=(c.label?('<b>'+c.label+'</b> &middot; '):'')+(c.start?(c.start.bg+' mg/dL / '+(c.start.iob||0)+'u'):'no anchor')+' &middot; '+(m.nTablets||0)+' tab, '+(m.nReadings||0)+' read'+(m.hadExercise?', exer':'');
       var low=(m.predLow!=null?m.predLow:'\u2014')+' / '+(m.actualMin!=null?m.actualMin:'\u2014');
-      h+='<tr><td><span class="num">'+when+'</span></td><td class="st">'+desc+'</td><td class="num">'+low+'</td><td style="text-align:right"><span class="x" data-delarch="'+c.id+'">\u2715</span></td></tr>';
+      h+='<tr><td><span class="num">'+when+'</span></td><td class="st">'+desc+'</td><td class="num">'+low+'</td><td style="text-align:right;white-space:nowrap"><button class="mini" data-loadarch="'+c.id+'">load</button><button class="mini" data-analarch="'+c.id+'">analyse</button><span class="x" data-delarch="'+c.id+'">\u2715</span></td></tr>';
     });
     h+='</tbody></table>'; box.innerHTML=h;
     box.querySelectorAll('[data-delarch]').forEach(function(b){ b.onclick=function(){ var id=b.getAttribute('data-delarch'); archive=archive.filter(function(c){return c.id!==id;}); saveArchive(); renderArchive(); }; });
+    box.querySelectorAll('[data-loadarch]').forEach(function(b){ b.onclick=function(){ reloadCycle(b.getAttribute('data-loadarch')); }; });
+    box.querySelectorAll('[data-analarch]').forEach(function(b){ b.onclick=function(){ analyzeCycle(b.getAttribute('data-analarch')); }; });
   }
+  function findCycle(id){ for(var i=0;i<archive.length;i++){ if(archive[i].id===id) return archive[i]; } return null; }
+  function cycleStartT(c){ if(c.start) return c.start.t; if(c.events.length){ return Math.min.apply(null,c.events.map(function(e){return e.t;})); } return c.savedAt; }
+  function cycleReadings(c){ var st0=cycleStartT(c); return c.events.filter(function(e){return e.type==='bg';}).map(function(e){return {min:Math.round((e.t-st0)/60000),bg:e.value};}).sort(function(a,b){return a.min-b.min;}); }
+  function cycleExerciseMin(c){ return Math.round(c.exercise.reduce(function(a,s){return a+((s.end||c.savedAt)-s.start)/60000;},0)); }
+  function reloadCycle(id){
+    var c=findCycle(id); if(!c)return;
+    if(!confirm('Load "'+(c.label||'this cycle')+'" into the active page? It replaces your current events and settings, and rebases the timing so the cycle ends about now.'))return;
+    var times=[c.savedAt]; if(c.start)times.push(c.start.t); c.events.forEach(function(e){times.push(e.t);}); c.exercise.forEach(function(s){times.push(s.start); if(s.end!=null)times.push(s.end);});
+    var shift=now()-Math.max.apply(null,times);
+    state.settings=JSON.parse(JSON.stringify(c.settings)); if(state.settings.api===undefined)state.settings.api=defaults.settings.api;
+    state.includeFood=c.includeFood;
+    state.start=c.start?{bg:c.start.bg,iob:c.start.iob,t:c.start.t+shift}:null;
+    state.events=c.events.map(function(e){ var n=JSON.parse(JSON.stringify(e)); n.t=e.t+shift; return n; });
+    state.exercise=c.exercise.map(function(s){ return {start:s.start+shift, end:s.end!=null?s.end+shift:null}; });
+    persist(); loadSettingsUI(); setExBtn(); setTab(state.includeFood); render();
+    window.scrollTo({top:0,behavior:'smooth'});
+  }
+  async function analyzeCycle(id){
+    var c=findCycle(id); if(!c)return;
+    var out=document.getElementById('archOut'), st=document.getElementById('archStatus');
+    st.textContent='Analysing cycle...';
+    try{
+      var m=c.metrics||{};
+      var pay={ label:c.label||null, isf:c.settings.isf, lag:c.settings.lag, dia:c.settings.dia, mgg:c.settings.mgg, exd:c.settings.exd,
+                startBG:c.start?c.start.bg:null, iob:c.start?c.start.iob:null,
+                tablets:c.events.filter(function(e){return e.type==='tablet';}).map(function(e){return {grams:e.grams,min:Math.round((e.t-cycleStartT(c))/60000)};}),
+                food:c.events.filter(function(e){return e.type==='food';}).map(function(e){return {grams:e.grams,speed:e.speed,min:Math.round((e.t-cycleStartT(c))/60000)};}),
+                exercise_min:cycleExerciseMin(c), predLow:m.predLow, actualLow:m.actualMin, readings:cycleReadings(c) };
+      var sys='Analyse this single glucose cycle for a type 1 diabetic (mg/dL). Inputs: settings used (isf, lag=onset minutes, dia, mgg=BG rise per g glucose, exd=exercise drain/hr), start BG/IOB, glucose tablets and food (grams, minutes from start), exercise minutes, the model predLow, and actual readings (minutes from start). In under 140 words: did glucose or insulin act stronger/weaker or faster/slower than the settings assume; one concrete calibration tweak (which setting, which direction); any timing or low concern. Plain and practical. Informational only: no insulin/carb dosing instructions; remind to confirm with readings and care team.';
+      out.style.display='block'; out.textContent=(c.label?('['+c.label+']\n'):'')+await callClaude(sys, JSON.stringify(pay)); st.textContent='';
+    }catch(e){ out.style.display='block'; out.textContent='AI request failed ('+e.message+'). Paste your Anthropic API key in the AI section to enable analysis.'; st.textContent=''; }
+  }
+  function dlFile(name,type,content){ try{ var blob=new Blob([content],{type:type}); var url=URL.createObjectURL(blob); var a=document.createElement('a'); a.href=url; a.download=name; document.body.appendChild(a); a.click(); document.body.removeChild(a); setTimeout(function(){URL.revokeObjectURL(url);},1500); }catch(e){ alert('Download failed: '+e.message); } }
+  function csvCell(v){ v=(v==null?'':String(v)); return /[",\n]/.test(v)? '"'+v.replace(/"/g,'""')+'"' : v; }
+  function exportJSON(){ if(!archive.length){alert('No saved cycles to export.');return;} dlFile('glucose-archive.json','application/json',JSON.stringify(archive,null,2)); }
+  function exportCSV(){ if(!archive.length){alert('No saved cycles to export.');return;}
+    var cols=['savedAt','label','ISF','lag_min','DIA_h','mgg','exDrain_per_h','startBG','IOB_u','tablets_g','exercise_min','food_on','predLow','actualLow','nReadings'];
+    var rows=[cols.join(',')];
+    archive.forEach(function(c){ var m=c.metrics||{}; rows.push([ new Date(c.savedAt).toISOString(), csvCell(c.label), c.settings.isf, c.settings.lag, c.settings.dia, c.settings.mgg, c.settings.exd, c.start?c.start.bg:'', c.start?(c.start.iob||0):'', m.totalG||0, cycleExerciseMin(c), c.includeFood?'yes':'no', m.predLow!=null?m.predLow:'', m.actualMin!=null?m.actualMin:'', m.nReadings||0 ].join(',')); });
+    dlFile('glucose-archive.csv','text/csv',rows.join('\n')); }
+  function exportXLSX(){ if(!archive.length){alert('No saved cycles to export.');return;}
+    if(typeof XLSX==='undefined'){ alert('Excel library not loaded yet (needs a connection the first time). Try CSV or JSON, or reload with signal.'); return; }
+    var cyc=archive.map(function(c){ var m=c.metrics||{}; return { Saved:new Date(c.savedAt).toLocaleString(), Label:c.label, ISF:c.settings.isf, Lag_min:c.settings.lag, DIA_h:c.settings.dia, mgg:c.settings.mgg, ExDrain_per_h:c.settings.exd, StartBG:c.start?c.start.bg:'', IOB_u:c.start?(c.start.iob||0):'', Tablets_g:m.totalG||0, Exercise_min:cycleExerciseMin(c), Food:c.includeFood?'yes':'no', PredLow:(m.predLow!=null?m.predLow:''), ActualLow:(m.actualMin!=null?m.actualMin:''), nReadings:m.nReadings||0 }; });
+    var reads=[]; archive.forEach(function(c){ cycleReadings(c).forEach(function(r){ reads.push({ Cycle:(c.label||new Date(c.savedAt).toLocaleString()), Min_from_start:r.min, BG:r.bg }); }); });
+    var wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(cyc), 'Cycles');
+    if(reads.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(reads), 'Readings');
+    XLSX.writeFile(wb, 'glucose-archive.xlsx'); }
   function clearArchive(){ if(!archive.length)return; if(!confirm('Delete all '+archive.length+' saved cycles? This cannot be undone.'))return; archive=[]; saveArchive(); renderArchive(); }
   async function analyzeArchive(){
     var out=document.getElementById('archOut'), st=document.getElementById('archStatus');
@@ -567,6 +620,9 @@
   document.getElementById('saveCycle').onclick=saveCycle;
   document.getElementById('analyzeArchive').onclick=analyzeArchive;
   document.getElementById('clearArchive').onclick=clearArchive;
+  document.getElementById('dlXlsx').onclick=exportXLSX;
+  document.getElementById('dlCsv').onclick=exportCSV;
+  document.getElementById('dlJson').onclick=exportJSON;
   document.getElementById('analyzeBtn').onclick=analyze;
 
   var KEYSTORE="glucoseTimerKey_v1";
