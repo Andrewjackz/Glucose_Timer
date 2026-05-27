@@ -185,14 +185,15 @@
   </div>
 
   <details>
-    <summary>Log an actual reading (check vs forecast)</summary>
+    <summary>Log a checkpoint (actual BG / IOB) &mdash; check vs forecast</summary>
     <div class="panel" style="margin-top:8px">
       <div class="row">
-        <div class="field grow"><label class="fl">reading (mg/dL)</label><input class="num" id="bgVal" type="number" min="0" step="1" placeholder="e.g. 95"/></div>
+        <div class="field grow"><label class="fl">actual BG (mg/dL)</label><input class="num" id="bgVal" type="number" min="0" step="1" placeholder="e.g. 95"/></div>
+        <div class="field w-sm"><label class="fl">IOB now (u)</label><input class="num" id="bgIob" type="number" min="0" step="0.05" placeholder="opt."/></div>
         <div class="field w-sm"><label class="fl">min ago</label><input class="num" id="bgAgo" type="number" min="0" step="1" value="0"/></div>
-        <div class="field"><label class="fl">&nbsp;</label><button id="addBg">Log reading</button></div>
+        <div class="field"><label class="fl">&nbsp;</label><button id="addBg">Log</button></div>
       </div>
-      <div class="help">Drops an actual reading onto the chart without re-anchoring, so you can watch how the forecast is tracking. The "Predicted now" card shows model vs your latest actual. (Use "Set now" up top instead to restart the forecast from a fresh BG/IOB.)</div>
+      <div class="help">Each time you check during a cycle, drop the real BG (and the IOB off the Omnipod, if you have it). It records onto the chart and stores what the model predicted at that moment &mdash; predicted vs actual BG, and predicted vs actual IOB &mdash; without re-anchoring. That predicted-vs-actual gap is what the analysis uses to tune your settings. (Use "Set now" up top to restart the forecast from a fresh BG/IOB.)</div>
     </div>
   </details>
 
@@ -433,7 +434,7 @@
       var pill='',detail='',del='';
       if(e.type==='tablet'){ pill='<span class="pill tab">tablet</span>'; detail='<span class="num">'+e.grams+' g</span> <span class="st">'+tabStatus(e)+'</span>'; del='<span class="x" data-del="'+e.id+'">\u2715</span>'; }
       else if(e.type==='food'){ pill='<span class="pill food">food</span>'; detail='<span class="num">'+e.grams+' g</span> <span class="st">'+e.speed+'</span>'; del='<span class="x" data-del="'+e.id+'">\u2715</span>'; }
-      else if(e.type==='bg'){ pill='<span class="pill bg">reading</span>'; detail='<span class="num">'+e.value+' mg/dL</span>'; del='<span class="x" data-del="'+e.id+'">\u2715</span>'; }
+      else if(e.type==='bg'){ pill='<span class="pill bg">check</span>'; detail='<span class="num">'+e.value+' mg/dL'+(e.iob!=null?' / '+e.iob+'u':'')+'</span>'; del='<span class="x" data-del="'+e.id+'">\u2715</span>'; }
       else if(e.type==='start'){ pill='<span class="pill bg">now</span>'; detail='<span class="num">'+e.bg+' mg/dL'+((e.iob)?' / '+e.iob+' u IOB':'')+'</span>'; del='<span class="x" data-delstart="1">\u2715</span>'; }
       else if(e.type==='exercise'){ pill='<span class="pill ex">exercise</span>'; detail=e.end?('<span class="num">'+clock(e.t)+'\u2013'+clock(e.end)+'</span>'):'<span class="st">ongoing</span>'; del='<span class="x" data-delex="'+e.exIdx+'">\u2715</span>'; }
       h+='<tr><td>'+time+'</td><td>'+pill+'</td><td>'+detail+'</td><td style="text-align:right">'+del+'</td></tr>';
@@ -444,16 +445,51 @@
     box.querySelectorAll('[data-delex]').forEach(function(b){ b.onclick=function(){ var i=parseInt(b.getAttribute('data-delex'),10); state.exercise.splice(i,1); persist(); setExBtn(); render(); }; });
   }
 
+  // ---- pure predictor (mirrors the forecast) for predicted-vs-actual residuals ----
+  function liveCtx(){ return {settings:state.settings, start:state.start, events:state.events, exercise:state.exercise, includeFood:state.includeFood}; }
+  function predictAbsBG(ctx, tAbs){
+    if(!ctx.start) return null;
+    var s=ctx.settings, anchorT=ctx.start.t, lag=(s.lag||0), Wms=Math.max(1,s.dia)*3600000;
+    function credit(time){ var c=0;
+      ctx.events.forEach(function(e){ if(e.type!=='tablet')return; var dt=(time-e.t)/60000-lag; if(dt>0) c+=e.grams*s.mgg*(1-Math.exp(-s.ka*dt)); });
+      if(ctx.includeFood) ctx.events.forEach(function(e){ if(e.type!=='food')return; var ka=FOOD_KA[e.speed]||FOOD_KA.med; var dt=(time-e.t)/60000-lag; if(dt>0) c+=e.grams*s.mgg*(1-Math.exp(-ka*dt)); });
+      return c; }
+    var riseInc=credit(tAbs)-credit(anchorT);
+    var insDrop=s.isf*(ctx.start.iob||0)*Math.max(0,Math.min(1,(tAbs-anchorT)/Wms));
+    var exDrain=0; ctx.exercise.forEach(function(sx){ var segEnd=(sx.end!=null?sx.end:tAbs); var ov=(Math.min(tAbs,segEnd)-Math.max(anchorT,sx.start))/60000; if(ov>0) exDrain+=ov*s.exd/60; });
+    return ctx.start.bg + riseInc - insDrop - exDrain;
+  }
+  function predictedIOBAt(ctx, tAbs){ if(!ctx.start) return null; var W=Math.max(1,ctx.settings.dia)*3600000; return (ctx.start.iob||0)*Math.max(0,Math.min(1, 1-(tAbs-ctx.start.t)/W)); }
+  function ctxResiduals(ctx){
+    if(!ctx.start) return {readings:[],summary:null};
+    var reads=ctx.events.filter(function(e){return e.type==='bg';}).slice().sort(function(a,b){return a.t-b.t;});
+    var st0=ctx.start.t;
+    var arr=reads.map(function(g){ var p=predictAbsBG(ctx,g.t); var r={min:Math.round((g.t-st0)/60000),actual:g.value,predicted:p!=null?Math.round(p):null,residual:p!=null?Math.round(g.value-p):null};
+      if(g.iob!=null){ var ip=predictedIOBAt(ctx,g.t); r.iobActual=g.iob; r.iobPred=ip!=null?Math.round(ip*100)/100:null; r.iobResid=ip!=null?Math.round((g.iob-ip)*100)/100:null; }
+      return r; });
+    var res=arr.filter(function(r){return r.residual!=null;});
+    var iobs=arr.filter(function(r){return r.iobResid!=null;});
+    var summary=null;
+    if(res.length){ var mean=res.reduce(function(a,r){return a+r.residual;},0)/res.length;
+      var half=Math.floor(res.length/2);
+      var avg=function(a){ return a.length?Math.round(a.reduce(function(x,r){return x+r.residual;},0)/a.length):null; };
+      summary={ n:res.length, meanResidual:Math.round(mean), earlyMean:avg(res.slice(0,half)), lateMean:avg(res.slice(half)),
+                nIob:iobs.length, meanIobResid: iobs.length? Math.round(iobs.reduce(function(a,r){return a+r.iobResid;},0)/iobs.length*100)/100 : null }; }
+    return {readings:arr, summary:summary};
+  }
+
   // ---------- archive ----------
   function cycleMetrics(sim){
     var bgs=state.events.filter(function(e){return e.type==='bg';}).map(function(e){return e.value;});
     if(state.start) bgs.push(state.start.bg);
     var actualMin = bgs.length? Math.min.apply(null,bgs) : null;
     var tabs=state.events.filter(function(e){return e.type==='tablet';});
+    var rr=ctxResiduals(liveCtx());
     return { predLow: sim.nadV!=null?Math.round(sim.nadV):null, predLowMin: Math.round(sim.nadX||0),
              actualMin: actualMin, nReadings: state.events.filter(function(e){return e.type==='bg';}).length,
              nTablets: tabs.length, totalG: tabs.reduce(function(a,e){return a+e.grams;},0),
-             hadExercise: state.exercise.length>0 };
+             hadExercise: state.exercise.length>0,
+             meanResidual: rr.summary?rr.summary.meanResidual:null };
   }
   function saveCycle(){
     if(!state.start && state.events.length===0){ alert('Nothing to save yet \u2014 set a starting BG/IOB and log some events first.'); return; }
@@ -477,7 +513,7 @@
     archive.forEach(function(c){
       var when=new Date(c.savedAt).toLocaleDateString([], {month:'short',day:'numeric'})+' '+new Date(c.savedAt).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'});
       var m=c.metrics||{};
-      var desc=(c.label?('<b>'+c.label+'</b> &middot; '):'')+(c.start?(c.start.bg+' mg/dL / '+(c.start.iob||0)+'u'):'no anchor')+' &middot; '+(m.nTablets||0)+' tab, '+(m.nReadings||0)+' read'+(m.hadExercise?', exer':'');
+      var desc=(c.label?('<b>'+c.label+'</b> &middot; '):'')+(c.start?(c.start.bg+' mg/dL / '+(c.start.iob||0)+'u'):'no anchor')+' &middot; '+(m.nTablets||0)+' tab, '+(m.nReadings||0)+' read'+(m.hadExercise?', exer':'')+(m.meanResidual!=null?(' &middot; err '+(m.meanResidual>=0?'+':'')+m.meanResidual):'');
       var low=(m.predLow!=null?m.predLow:'\u2014')+' / '+(m.actualMin!=null?m.actualMin:'\u2014');
       h+='<tr><td><span class="num">'+when+'</span></td><td class="st">'+desc+'</td><td class="num">'+low+'</td><td style="text-align:right;white-space:nowrap"><button class="mini" data-loadarch="'+c.id+'">load</button><button class="mini" data-analarch="'+c.id+'">analyse</button><span class="x" data-delarch="'+c.id+'">\u2715</span></td></tr>';
     });
@@ -508,13 +544,14 @@
     var out=document.getElementById('archOut'), st=document.getElementById('archStatus');
     st.textContent='Analysing cycle...';
     try{
-      var m=c.metrics||{};
+      var m=c.metrics||{}; var rr=ctxResiduals(c);
       var pay={ label:c.label||null, isf:c.settings.isf, lag:c.settings.lag, dia:c.settings.dia, mgg:c.settings.mgg, exd:c.settings.exd,
-                startBG:c.start?c.start.bg:null, iob:c.start?c.start.iob:null,
+                startBG:c.start?c.start.bg:null, startIOB:c.start?c.start.iob:null,
                 tablets:c.events.filter(function(e){return e.type==='tablet';}).map(function(e){return {grams:e.grams,min:Math.round((e.t-cycleStartT(c))/60000)};}),
                 food:c.events.filter(function(e){return e.type==='food';}).map(function(e){return {grams:e.grams,speed:e.speed,min:Math.round((e.t-cycleStartT(c))/60000)};}),
-                exercise_min:cycleExerciseMin(c), predLow:m.predLow, actualLow:m.actualMin, readings:cycleReadings(c) };
-      var sys='Analyse this single glucose cycle for a type 1 diabetic (mg/dL). Inputs: settings used (isf, lag=onset minutes, dia, mgg=BG rise per g glucose, exd=exercise drain/hr), start BG/IOB, glucose tablets and food (grams, minutes from start), exercise minutes, the model predLow, and actual readings (minutes from start). In under 140 words: did glucose or insulin act stronger/weaker or faster/slower than the settings assume; one concrete calibration tweak (which setting, which direction); any timing or low concern. Plain and practical. Informational only: no insulin/carb dosing instructions; remind to confirm with readings and care team.';
+                exercise_min:cycleExerciseMin(c), predLow:m.predLow, actualLow:m.actualMin,
+                checkpoints:rr.readings, residualSummary:rr.summary };
+      var sys='Analyse one glucose cycle for a type 1 diabetic (mg/dL) to tune settings. Settings used: isf, lag (onset min before glucose acts), dia (insulin-action-ahead hrs), mgg (BG rise per g glucose), exd (exercise drain/hr). KEY DATA = checkpoints: each has actual vs predicted BG and residual (actual-predicted), and where logged actual vs predicted IOB and iobResid. Use the residuals as the calibration signal: BG residual consistently POSITIVE = model runs below reality (glucose too weak / insulin too strong / drain too high) -> e.g. raise mgg, raise dia, or lower exd; consistently NEGATIVE = opposite. Early-vs-late residual split points to onset lag or absorption-speed errors. IOB residual: actual IOB draining faster than predicted means dia too long (shorten), slower means lengthen. In under 150 words: (1) direction and rough size of any BG bias and what it implies; (2) what the IOB residuals say about dia, if present; (3) 1-2 concrete setting changes (which, which way, rough amount). If fewer than ~3 checkpoints spanning the cycle, say the data is insufficient and what to log. Informational only: no insulin/carb dosing instructions; remind to confirm with readings and care team.';
       out.style.display='block'; out.textContent=(c.label?('['+c.label+']\n'):'')+await callClaude(sys, JSON.stringify(pay)); st.textContent='';
     }catch(e){ out.style.display='block'; out.textContent='AI request failed ('+e.message+'). Paste your Anthropic API key in the AI section to enable analysis.'; st.textContent=''; }
   }
@@ -522,14 +559,14 @@
   function csvCell(v){ v=(v==null?'':String(v)); return /[",\n]/.test(v)? '"'+v.replace(/"/g,'""')+'"' : v; }
   function exportJSON(){ if(!archive.length){alert('No saved cycles to export.');return;} dlFile('glucose-archive.json','application/json',JSON.stringify(archive,null,2)); }
   function exportCSV(){ if(!archive.length){alert('No saved cycles to export.');return;}
-    var cols=['savedAt','label','ISF','lag_min','DIA_h','mgg','exDrain_per_h','startBG','IOB_u','tablets_g','exercise_min','food_on','predLow','actualLow','nReadings'];
+    var cols=['savedAt','label','ISF','lag_min','DIA_h','mgg','exDrain_per_h','startBG','IOB_u','tablets_g','exercise_min','food_on','predLow','actualLow','nReadings','meanBGerr','meanIOBerr'];
     var rows=[cols.join(',')];
-    archive.forEach(function(c){ var m=c.metrics||{}; rows.push([ new Date(c.savedAt).toISOString(), csvCell(c.label), c.settings.isf, c.settings.lag, c.settings.dia, c.settings.mgg, c.settings.exd, c.start?c.start.bg:'', c.start?(c.start.iob||0):'', m.totalG||0, cycleExerciseMin(c), c.includeFood?'yes':'no', m.predLow!=null?m.predLow:'', m.actualMin!=null?m.actualMin:'', m.nReadings||0 ].join(',')); });
+    archive.forEach(function(c){ var m=c.metrics||{}; var ss=ctxResiduals(c).summary; rows.push([ new Date(c.savedAt).toISOString(), csvCell(c.label), c.settings.isf, c.settings.lag, c.settings.dia, c.settings.mgg, c.settings.exd, c.start?c.start.bg:'', c.start?(c.start.iob||0):'', m.totalG||0, cycleExerciseMin(c), c.includeFood?'yes':'no', m.predLow!=null?m.predLow:'', m.actualMin!=null?m.actualMin:'', m.nReadings||0, (ss?ss.meanResidual:''), (ss&&ss.meanIobResid!=null?ss.meanIobResid:'') ].join(',')); });
     dlFile('glucose-archive.csv','text/csv',rows.join('\n')); }
   function exportXLSX(){ if(!archive.length){alert('No saved cycles to export.');return;}
     if(typeof XLSX==='undefined'){ alert('Excel library not loaded yet (needs a connection the first time). Try CSV or JSON, or reload with signal.'); return; }
-    var cyc=archive.map(function(c){ var m=c.metrics||{}; return { Saved:new Date(c.savedAt).toLocaleString(), Label:c.label, ISF:c.settings.isf, Lag_min:c.settings.lag, DIA_h:c.settings.dia, mgg:c.settings.mgg, ExDrain_per_h:c.settings.exd, StartBG:c.start?c.start.bg:'', IOB_u:c.start?(c.start.iob||0):'', Tablets_g:m.totalG||0, Exercise_min:cycleExerciseMin(c), Food:c.includeFood?'yes':'no', PredLow:(m.predLow!=null?m.predLow:''), ActualLow:(m.actualMin!=null?m.actualMin:''), nReadings:m.nReadings||0 }; });
-    var reads=[]; archive.forEach(function(c){ cycleReadings(c).forEach(function(r){ reads.push({ Cycle:(c.label||new Date(c.savedAt).toLocaleString()), Min_from_start:r.min, BG:r.bg }); }); });
+    var cyc=archive.map(function(c){ var m=c.metrics||{}; var ss=ctxResiduals(c).summary; return { Saved:new Date(c.savedAt).toLocaleString(), Label:c.label, ISF:c.settings.isf, Lag_min:c.settings.lag, DIA_h:c.settings.dia, mgg:c.settings.mgg, ExDrain_per_h:c.settings.exd, StartBG:c.start?c.start.bg:'', IOB_u:c.start?(c.start.iob||0):'', Tablets_g:m.totalG||0, Exercise_min:cycleExerciseMin(c), Food:c.includeFood?'yes':'no', PredLow:(m.predLow!=null?m.predLow:''), ActualLow:(m.actualMin!=null?m.actualMin:''), nReadings:m.nReadings||0, MeanBGerr:(ss?ss.meanResidual:''), MeanIOBerr:(ss&&ss.meanIobResid!=null?ss.meanIobResid:'') }; });
+    var reads=[]; archive.forEach(function(c){ ctxResiduals(c).readings.forEach(function(r){ reads.push({ Cycle:(c.label||new Date(c.savedAt).toLocaleString()), Min_from_start:r.min, Actual_BG:r.actual, Pred_BG:(r.predicted!=null?r.predicted:''), BG_resid:(r.residual!=null?r.residual:''), Actual_IOB:(r.iobActual!=null?r.iobActual:''), Pred_IOB:(r.iobPred!=null?r.iobPred:''), IOB_resid:(r.iobResid!=null?r.iobResid:'') }); }); });
     var wb=XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(cyc), 'Cycles');
     if(reads.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(reads), 'Readings');
@@ -541,18 +578,16 @@
     st.textContent='Analysing '+archive.length+' cycles...';
     try{
       var payload=archive.slice(0,30).map(function(c){
-        var st0=c.start?c.start.t:(c.events[0]?c.events[0].t:c.savedAt);
-        var reads=c.events.filter(function(e){return e.type==='bg';}).map(function(e){return {min:Math.round((e.t-st0)/60000),bg:e.value};}).sort(function(a,b){return a.min-b.min;});
-        var ex=c.exercise.reduce(function(a,s){return a+((s.end||c.savedAt)-s.start)/60000;},0);
+        var rr=ctxResiduals(c);
         return { when:new Date(c.savedAt).toISOString().slice(0,16), label:c.label,
                  isf:c.settings.isf, lag:c.settings.lag, dia:c.settings.dia, mgg:c.settings.mgg, exd:c.settings.exd,
-                 startBG:c.start?c.start.bg:null, iob:c.start?c.start.iob:null,
+                 startBG:c.start?c.start.bg:null, startIOB:c.start?c.start.iob:null,
                  tablets_g:(c.metrics&&c.metrics.totalG)||0, food_on:c.includeFood,
-                 exercise_min:Math.round(ex),
+                 exercise_min:cycleExerciseMin(c),
                  predLow:c.metrics?c.metrics.predLow:null, actualLow:c.metrics?c.metrics.actualMin:null,
-                 readings:reads };
+                 residualSummary:rr.summary, checkpoints:rr.readings };
       });
-      var sys='You are reviewing multiple saved glucose cycles for a type 1 diabetic (units mg/dL). Each has the settings used (isf, onset lag, dia, mgg=BG rise per g glucose, exd=exercise drain/hr), the start BG/IOB, glucose given, exercise, and actual readings vs the model predLow. Across the set, in under 180 words: (1) does the model systematically over- or under-predict the low (compare actualLow vs predLow)? (2) do tablets, insulin, or exercise look stronger/weaker or faster/slower than the settings assume? (3) give 1-2 specific calibration changes with direction and rough size; (4) note any pattern (e.g. exercise cycles, larger doses). Plain and practical. Informational only: no insulin/carb dosing instructions; remind to confirm with readings and care team.';
+      var sys='Review multiple saved glucose cycles for a type 1 diabetic (mg/dL) to tune settings. Each cycle lists the settings used (isf, lag=onset min, dia=insulin-action-ahead hrs, mgg=BG rise per g glucose, exd=exercise drain/hr) and checkpoints with actual vs predicted BG (residual = actual-predicted) and, where logged, actual vs predicted IOB (iobResid). The residuals are the signal, NOT predLow vs actualLow (which can match trivially when no readings were logged). Across cycles, in under 180 words: (1) is there a systematic BG residual bias (positive = model runs below reality: glucose too weak / insulin too strong / drain too high; negative = opposite) and is it tied to exercise, dose size, or time of day; (2) what do IOB residuals say about dia; (3) does early-vs-late residual point to the onset lag or absorption speed; (4) 1-2 concrete setting changes with direction and rough size. Note which settings differ across cycles. If most cycles have <3 checkpoints, say the data is too thin to recalibrate and what to log. Informational only: no insulin/carb dosing instructions; remind to confirm with readings and care team.';
       out.style.display='block'; out.textContent=await callClaude(sys, JSON.stringify(payload)); st.textContent='';
     }catch(e){ out.style.display='block'; out.textContent='AI request failed ('+e.message+'). Paste your Anthropic API key in the AI section to enable analysis.'; st.textContent=''; }
   }
@@ -562,7 +597,7 @@
   function bump(d){ var i=document.getElementById('grams'); var v=(parseFloat(i.value)||0)+d; if(v<0)v=0; i.value=v; }
   function toggleEx(){ var a=activeExSession(); if(a){ a.end=now(); } else { var dur=parseFloat(document.getElementById('exDur').value)||0; state.exercise.push({start:now(), end: dur>0? now()+dur*60000 : null}); } setExBtn(); persist(); render(); }
   function setExBtn(){ var b=document.getElementById('exBtn'),a=activeExSession(); if(a){ b.className='toggle on'; b.textContent= a.end? ('Exercising \u2192 '+clock(a.end)) : 'Exercising: on'; } else { b.className='toggle'; b.textContent='Exercising: off'; } }
-  function addBg(){ var v=parseFloat(document.getElementById('bgVal').value); var ago=parseFloat(document.getElementById('bgAgo').value)||0; if(isNaN(v))return; state.events.push({id:uid(),type:'bg',t:now()-ago*60000,value:v}); document.getElementById('bgVal').value=''; document.getElementById('bgAgo').value=0; persist(); render(); }
+  function addBg(){ var v=parseFloat(document.getElementById('bgVal').value); var io=parseFloat(document.getElementById('bgIob').value); var ago=parseFloat(document.getElementById('bgAgo').value)||0; if(isNaN(v))return; var ev={id:uid(),type:'bg',t:now()-ago*60000,value:v}; if(!isNaN(io))ev.iob=io; state.events.push(ev); document.getElementById('bgVal').value=''; document.getElementById('bgIob').value=''; document.getElementById('bgAgo').value=0; persist(); render(); }
   function addFood(){ var v=parseFloat(document.getElementById('foodVal').value); var ago=parseFloat(document.getElementById('foodAgo').value)||0; if(isNaN(v)||v<=0)return; state.events.push({id:uid(),type:'food',t:now()-ago*60000,grams:v,speed:document.getElementById('foodSpeed').value}); document.getElementById('foodVal').value=''; document.getElementById('foodAgo').value=0; persist(); render(); }
 
   function setTab(food){ state.includeFood=food; document.getElementById('tab1').classList.toggle('active',!food); document.getElementById('tab2').classList.toggle('active',food); document.getElementById('foodPanel').classList.toggle('hide',!food); persist(); render(); }
@@ -595,11 +630,13 @@
   }
   async function analyze(){ var out=document.getElementById('aiOut'), st=document.getElementById('aiStatus'); st.textContent='Analysing...';
     try{
-      var pay={ settings:state.settings, includeFood:state.includeFood, startBG:state.start?state.start.bg:null, iob:state.start?state.start.iob:null,
+      var rr=ctxResiduals(liveCtx()); var sim=simulate();
+      var pay={ settings:state.settings, includeFood:state.includeFood, startBG:state.start?state.start.bg:null, startIOB:state.start?state.start.iob:null,
+        predLow:(sim.nadV!=null?Math.round(sim.nadV):null),
         tablets:state.events.filter(function(e){return e.type==='tablet';}).map(function(e){return {grams:e.grams,minAgo:Math.round((now()-e.t)/60000)};}),
         food:state.events.filter(function(e){return e.type==='food';}).map(function(e){return {grams:e.grams,speed:e.speed,minAgo:Math.round((now()-e.t)/60000)};}),
-        readings:state.events.filter(function(e){return e.type==='bg';}).map(function(e){return {mgdl:e.value,minAgo:Math.round((now()-e.t)/60000)};}) };
-      var sys='You help analyse a glucose-tablet/insulin offset log for a type 1 diabetic. Compare modelled forecast vs actual readings. In under 140 words: (1) do tablets or insulin appear stronger/weaker or faster/slower than modelled; (2) suggest one concrete calibration tweak (which setting, which direction); (3) flag any low-risk or timing concern. Plain and practical. Informational only: do NOT give insulin or carb dosing instructions; remind them to confirm with a reading and their care team.';
+        checkpoints:rr.readings, residualSummary:rr.summary };
+      var sys='Analyse the current glucose cycle for a type 1 diabetic (mg/dL) to tune settings. Settings: isf, lag (onset min before glucose acts), dia (insulin-action-ahead hrs), mgg (BG rise per g glucose), exd (exercise drain/hr). KEY DATA = checkpoints: each has actual vs predicted BG with residual (actual-predicted), and where logged actual vs predicted IOB with iobResid. Use residuals as the signal: BG residual consistently POSITIVE = model runs below reality (glucose too weak / insulin too strong / drain too high); NEGATIVE = opposite. Early-vs-late residual split points to onset lag / absorption speed. IOB residual: actual draining faster than predicted = dia too long; slower = too short. In under 140 words: (1) BG bias direction/size and what it implies; (2) what IOB residuals say about dia, if present; (3) one concrete setting change (which, which way, rough amount). If no checkpoints with residuals, say you cannot calibrate yet and to log actual BG (and IOB) during the cycle. Informational only: no insulin/carb dosing instructions; remind to confirm with a reading and their care team.';
       out.style.display='block'; out.textContent=await callClaude(sys,JSON.stringify(pay)); st.textContent='';
     }catch(e){ out.style.display='block'; out.textContent='AI request failed ('+e.message+'). Paste your Anthropic API key above to enable AI features on your live site.'; st.textContent=''; }
   }
