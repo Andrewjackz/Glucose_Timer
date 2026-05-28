@@ -266,7 +266,7 @@
       <p><b>Predicted low</b> is the lowest point of the forward curve. It's a planning estimate, not a guarantee — verify with a reading, especially before deciding not to treat.</p>
     </div>
   </details>
-  <div class="buildstamp">build 2026-05-27 &middot; planning aid only &mdash; not a medical device</div>
+  <div class="buildstamp">build 2026-05-27c &middot; planning aid only &mdash; not a medical device</div>
 </div>
 
 <script>
@@ -511,7 +511,9 @@ window.__startGlucoseApp=function(){
     if(!state.start && state.events.length===0){ alert('Nothing to save yet \u2014 set a starting BG/IOB and log some events first.'); return; }
     var label=prompt('Label for this cycle (optional):','');
     if(label===null) return; // cancelled
-    var snap={ id:uid(), savedAt:now(), label:(label||'').trim(),
+    var note=prompt('Note / context (optional) \u2014 anything that might matter for tuning:\n(e.g. stressed day, ate late, sensor day 9, illness, alcohol)','');
+    if(note===null) note='';
+    var snap={ id:uid(), savedAt:now(), label:(label||'').trim(), note:(note||'').trim(),
                settings:JSON.parse(JSON.stringify(state.settings)),
                start:state.start?JSON.parse(JSON.stringify(state.start)):null,
                includeFood:state.includeFood,
@@ -531,15 +533,18 @@ window.__startGlucoseApp=function(){
       var when=new Date(c.savedAt).toLocaleDateString([], {month:'short',day:'numeric'})+' '+new Date(c.savedAt).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'});
       var m=c.metrics||{};
       var desc=(c.label?('<b>'+c.label+'</b> &middot; '):'')+(c.start?(c.start.bg+' mg/dL / '+(c.start.iob||0)+'u'):'no anchor')+' &middot; '+(m.nTablets||0)+' tab, '+(m.nReadings||0)+' read'+(m.hadExercise?', exer':'')+(m.meanResidual!=null?(' &middot; err '+(m.meanResidual>=0?'+':'')+m.meanResidual):'');
+      var noteHtml = c.note? '<div class="st" style="font-style:italic">\u201c'+esc(c.note)+'\u201d</div>' : '';
       var low=(m.predLow!=null?m.predLow:'\u2014')+' / '+(m.actualMin!=null?m.actualMin:'\u2014');
-      h+='<tr'+(c.excludedFromAnalysis?' class="excl-row"':'')+'><td><span class="num">'+when+'</span></td><td class="st">'+desc+'</td><td class="num">'+low+'</td><td style="text-align:right;white-space:nowrap"><button class="mini" data-loadarch="'+c.id+'">load</button><button class="mini" data-analarch="'+c.id+'">analyse</button><label class="excl"><input type="checkbox" data-exclcyc="'+c.id+'"'+(c.excludedFromAnalysis?' checked':'')+'/>excl</label><span class="x" data-delarch="'+c.id+'">\u2715</span></td></tr>';
+      h+='<tr'+(c.excludedFromAnalysis?' class="excl-row"':'')+'><td><span class="num">'+when+'</span></td><td class="st">'+desc+noteHtml+'</td><td class="num">'+low+'</td><td style="text-align:right;white-space:nowrap"><button class="mini" data-notearch="'+c.id+'">note</button><button class="mini" data-loadarch="'+c.id+'">load</button><button class="mini" data-analarch="'+c.id+'">analyse</button><label class="excl"><input type="checkbox" data-exclcyc="'+c.id+'"'+(c.excludedFromAnalysis?' checked':'')+'/>excl</label><span class="x" data-delarch="'+c.id+'">\u2715</span></td></tr>';
     });
     h+='</tbody></table>'; box.innerHTML=h;
     box.querySelectorAll('[data-delarch]').forEach(function(b){ b.onclick=function(){ var id=b.getAttribute('data-delarch'); if(!confirm('Delete this saved cycle? This cannot be undone.'))return; archive=archive.filter(function(c){return c.id!==id;}); saveArchive(); renderArchive(); }; });
     box.querySelectorAll('[data-loadarch]').forEach(function(b){ b.onclick=function(){ reloadCycle(b.getAttribute('data-loadarch')); }; });
     box.querySelectorAll('[data-analarch]').forEach(function(b){ b.onclick=function(){ analyzeCycle(b.getAttribute('data-analarch')); }; });
     box.querySelectorAll('[data-exclcyc]').forEach(function(b){ b.onchange=function(){ var c=findCycle(b.getAttribute('data-exclcyc')); if(c){ c.excludedFromAnalysis=b.checked; saveArchive(); renderArchive(); } }; });
+    box.querySelectorAll('[data-notearch]').forEach(function(b){ b.onclick=function(){ setCycleNote(b.getAttribute('data-notearch')); }; });
   }
+  function setCycleNote(id){ var c=findCycle(id); if(!c)return; var t=prompt('Note / context for this cycle (anything that might matter for tuning):', c.note||''); if(t===null) return; c.note=t.trim(); if(!c.note) delete c.note; saveArchive(); renderArchive(); }
   function findCycle(id){ for(var i=0;i<archive.length;i++){ if(archive[i].id===id) return archive[i]; } return null; }
   function cycleStartT(c){ if(c.start) return c.start.t; if(c.events.length){ return Math.min.apply(null,c.events.map(function(e){return e.t;})); } return c.savedAt; }
   function cycleReadings(c){ var st0=cycleStartT(c); return c.events.filter(function(e){return e.type==='bg';}).map(function(e){return {min:Math.round((e.t-st0)/60000),bg:e.value};}).sort(function(a,b){return a.min-b.min;}); }
@@ -563,13 +568,13 @@ window.__startGlucoseApp=function(){
     st.textContent='Analysing cycle...';
     try{
       var m=c.metrics||{}; var rr=ctxResiduals(c);
-      var pay={ label:c.label||null, isf:c.settings.isf, lag:c.settings.lag, dia:c.settings.dia, mgg:c.settings.mgg, exd:c.settings.exd,
+      var pay={ label:c.label||null, note:c.note||null, isf:c.settings.isf, lag:c.settings.lag, dia:c.settings.dia, mgg:c.settings.mgg, exd:c.settings.exd,
                 startBG:c.start?c.start.bg:null, startIOB:c.start?c.start.iob:null,
                 tablets:c.events.filter(function(e){return e.type==='tablet'&&!e.excluded;}).map(function(e){return {grams:e.grams,min:Math.round((e.t-cycleStartT(c))/60000)};}),
                 food:c.events.filter(function(e){return e.type==='food'&&!e.excluded;}).map(function(e){return {grams:e.grams,speed:e.speed,min:Math.round((e.t-cycleStartT(c))/60000)};}),
                 exercise_min:cycleExerciseMin(c), predLow:m.predLow, actualLow:m.actualMin,
                 checkpoints:rr.readings, residualSummary:rr.summary };
-      var sys='Analyse one glucose cycle for a type 1 diabetic (mg/dL) to tune settings. Settings used: isf, lag (onset min before glucose acts), dia (insulin-action-ahead hrs), mgg (BG rise per g glucose), exd (exercise drain/hr). KEY DATA = checkpoints: each has actual vs predicted BG and residual (actual-predicted), and where logged actual vs predicted IOB and iobResid. Use the residuals as the calibration signal: BG residual consistently POSITIVE = model runs below reality (glucose too weak / insulin too strong / drain too high) -> e.g. raise mgg, raise dia, or lower exd; consistently NEGATIVE = opposite. Early-vs-late residual split points to onset lag or absorption-speed errors. IOB residual: actual IOB draining faster than predicted means dia too long (shorten), slower means lengthen. In under 150 words: (1) direction and rough size of any BG bias and what it implies; (2) what the IOB residuals say about dia, if present; (3) 1-2 concrete setting changes (which, which way, rough amount). If fewer than ~3 checkpoints spanning the cycle, say the data is insufficient and what to log. Informational only: no insulin/carb dosing instructions; remind to confirm with readings and care team.';
+      var sys='Analyse one glucose cycle for a type 1 diabetic (mg/dL) to tune settings. Settings used: isf, lag (onset min before glucose acts), dia (insulin-action-ahead hrs), mgg (BG rise per g glucose), exd (exercise drain/hr). KEY DATA = checkpoints: each has actual vs predicted BG and residual (actual-predicted), and where logged actual vs predicted IOB and iobResid. Use the residuals as the calibration signal: BG residual consistently POSITIVE = model runs below reality (glucose too weak / insulin too strong / drain too high) -> e.g. raise mgg, raise dia, or lower exd; consistently NEGATIVE = opposite. Early-vs-late residual split points to onset lag or absorption-speed errors. IOB residual: actual IOB draining faster than predicted means dia too long (shorten), slower means lengthen. CONTEXT: if "note" describes one-off circumstances (illness, alcohol, unusual meal, sensor issue, stress, missed insulin, etc.), treat the residuals as context-laden and explicitly say they should NOT drive a generic setting change \u2014 explain them by the note instead. In under 150 words: (1) direction and rough size of any BG bias and what it implies, AND whether the note explains it; (2) what the IOB residuals say about dia, if present; (3) 1-2 concrete setting changes (which, which way, rough amount) \u2014 or "no change indicated by this cycle" if the note explains it. If fewer than ~3 checkpoints spanning the cycle, say the data is insufficient and what to log. Informational only: no insulin/carb dosing instructions; remind to confirm with readings and care team.';
       out.style.display='block'; out.textContent=(c.label?('['+c.label+']\n'):'')+await callClaude(sys, JSON.stringify(pay)); st.textContent='';
     }catch(e){ out.style.display='block'; out.textContent='AI request failed ('+e.message+'). Paste your Anthropic API key in the AI section to enable analysis.'; st.textContent=''; }
   }
@@ -577,13 +582,13 @@ window.__startGlucoseApp=function(){
   function csvCell(v){ v=(v==null?'':String(v)); return /[",\n]/.test(v)? '"'+v.replace(/"/g,'""')+'"' : v; }
   function exportJSON(){ if(!archive.length){alert('No saved cycles to export.');return;} dlFile('glucose-archive.json','application/json',JSON.stringify(archive,null,2)); }
   function exportCSV(){ if(!archive.length){alert('No saved cycles to export.');return;}
-    var cols=['savedAt','label','ISF','lag_min','DIA_h','mgg','exDrain_per_h','startBG','IOB_u','tablets_g','exercise_min','food_on','predLow','actualLow','nReadings','meanBGerr','meanIOBerr'];
+    var cols=['savedAt','label','note','ISF','lag_min','DIA_h','mgg','exDrain_per_h','startBG','IOB_u','tablets_g','exercise_min','food_on','predLow','actualLow','nReadings','meanBGerr','meanIOBerr','excludedFromAnalysis'];
     var rows=[cols.join(',')];
-    archive.forEach(function(c){ var m=c.metrics||{}; var ss=ctxResiduals(c).summary; rows.push([ new Date(c.savedAt).toISOString(), csvCell(c.label), c.settings.isf, c.settings.lag, c.settings.dia, c.settings.mgg, c.settings.exd, c.start?c.start.bg:'', c.start?(c.start.iob||0):'', m.totalG||0, cycleExerciseMin(c), c.includeFood?'yes':'no', m.predLow!=null?m.predLow:'', m.actualMin!=null?m.actualMin:'', m.nReadings||0, (ss?ss.meanResidual:''), (ss&&ss.meanIobResid!=null?ss.meanIobResid:'') ].join(',')); });
+    archive.forEach(function(c){ var m=c.metrics||{}; var ss=ctxResiduals(c).summary; rows.push([ new Date(c.savedAt).toISOString(), csvCell(c.label), csvCell(c.note||''), c.settings.isf, c.settings.lag, c.settings.dia, c.settings.mgg, c.settings.exd, c.start?c.start.bg:'', c.start?(c.start.iob||0):'', m.totalG||0, cycleExerciseMin(c), c.includeFood?'yes':'no', m.predLow!=null?m.predLow:'', m.actualMin!=null?m.actualMin:'', m.nReadings||0, (ss?ss.meanResidual:''), (ss&&ss.meanIobResid!=null?ss.meanIobResid:''), (c.excludedFromAnalysis?'yes':'') ].join(',')); });
     dlFile('glucose-archive.csv','text/csv',rows.join('\n')); }
   function exportXLSX(){ if(!archive.length){alert('No saved cycles to export.');return;}
     if(typeof XLSX==='undefined'){ alert('Excel library not loaded yet (needs a connection the first time). Try CSV or JSON, or reload with signal.'); return; }
-    var cyc=archive.map(function(c){ var m=c.metrics||{}; var ss=ctxResiduals(c).summary; return { Saved:new Date(c.savedAt).toLocaleString(), Label:c.label, ISF:c.settings.isf, Lag_min:c.settings.lag, DIA_h:c.settings.dia, mgg:c.settings.mgg, ExDrain_per_h:c.settings.exd, StartBG:c.start?c.start.bg:'', IOB_u:c.start?(c.start.iob||0):'', Tablets_g:m.totalG||0, Exercise_min:cycleExerciseMin(c), Food:c.includeFood?'yes':'no', PredLow:(m.predLow!=null?m.predLow:''), ActualLow:(m.actualMin!=null?m.actualMin:''), nReadings:m.nReadings||0, MeanBGerr:(ss?ss.meanResidual:''), MeanIOBerr:(ss&&ss.meanIobResid!=null?ss.meanIobResid:'') }; });
+    var cyc=archive.map(function(c){ var m=c.metrics||{}; var ss=ctxResiduals(c).summary; return { Saved:new Date(c.savedAt).toLocaleString(), Label:c.label, Note:(c.note||''), ISF:c.settings.isf, Lag_min:c.settings.lag, DIA_h:c.settings.dia, mgg:c.settings.mgg, ExDrain_per_h:c.settings.exd, StartBG:c.start?c.start.bg:'', IOB_u:c.start?(c.start.iob||0):'', Tablets_g:m.totalG||0, Exercise_min:cycleExerciseMin(c), Food:c.includeFood?'yes':'no', PredLow:(m.predLow!=null?m.predLow:''), ActualLow:(m.actualMin!=null?m.actualMin:''), nReadings:m.nReadings||0, MeanBGerr:(ss?ss.meanResidual:''), MeanIOBerr:(ss&&ss.meanIobResid!=null?ss.meanIobResid:''), ExcludedFromAnalysis:(c.excludedFromAnalysis?'yes':'') }; });
     var reads=[]; archive.forEach(function(c){ var st0=cycleStartT(c); c.events.filter(function(e){return e.type==='bg';}).forEach(function(e){ var p=predictAbsBG(c,e.t); var ip=predictedIOBAt(c,e.t); reads.push({ Cycle:(c.label||new Date(c.savedAt).toLocaleString()), Min_from_start:Math.round((e.t-st0)/60000), Actual_BG:e.value, Pred_BG:(p!=null?Math.round(p):''), BG_resid:(p!=null?Math.round(e.value-p):''), Actual_IOB:(e.iob!=null?e.iob:''), Pred_IOB:(e.iob!=null&&ip!=null?Math.round(ip*100)/100:''), IOB_resid:(e.iob!=null&&ip!=null?Math.round((e.iob-ip)*100)/100:''), Excluded:(e.excluded?'yes':''), Note:(e.note||'') }); }); });
     var evs=[]; archive.forEach(function(c){ var st0=cycleStartT(c); var label=(c.label||new Date(c.savedAt).toLocaleString());
       c.events.forEach(function(e){ var val=e.type==='tablet'?(e.grams+' g'):e.type==='food'?(e.grams+' g '+(e.speed||'')):e.type==='bg'?(e.value+' mg/dL'+(e.iob!=null?' / '+e.iob+'u':'')):''; evs.push({ Cycle:label, Type:e.type, Min_from_start:Math.round((e.t-st0)/60000), Detail:val, Excluded:(e.excluded?'yes':''), Note:(e.note||'') }); });
@@ -602,7 +607,7 @@ window.__startGlucoseApp=function(){
     try{
       var payload=pool.slice(0,30).map(function(c){
         var rr=ctxResiduals(c);
-        return { when:new Date(c.savedAt).toISOString().slice(0,16), label:c.label,
+        return { when:new Date(c.savedAt).toISOString().slice(0,16), label:c.label, note:c.note||null,
                  isf:c.settings.isf, lag:c.settings.lag, dia:c.settings.dia, mgg:c.settings.mgg, exd:c.settings.exd,
                  startBG:c.start?c.start.bg:null, startIOB:c.start?c.start.iob:null,
                  tablets_g:(c.metrics&&c.metrics.totalG)||0, food_on:c.includeFood,
@@ -610,7 +615,7 @@ window.__startGlucoseApp=function(){
                  predLow:c.metrics?c.metrics.predLow:null, actualLow:c.metrics?c.metrics.actualMin:null,
                  residualSummary:rr.summary, checkpoints:rr.readings };
       });
-      var sys='Review multiple saved glucose cycles for a type 1 diabetic (mg/dL) to tune settings. Each cycle lists the settings used (isf, lag=onset min, dia=insulin-action-ahead hrs, mgg=BG rise per g glucose, exd=exercise drain/hr) and checkpoints with actual vs predicted BG (residual = actual-predicted) and, where logged, actual vs predicted IOB (iobResid). The residuals are the signal, NOT predLow vs actualLow (which can match trivially when no readings were logged). Across cycles, in under 180 words: (1) is there a systematic BG residual bias (positive = model runs below reality: glucose too weak / insulin too strong / drain too high; negative = opposite) and is it tied to exercise, dose size, or time of day; (2) what do IOB residuals say about dia; (3) does early-vs-late residual point to the onset lag or absorption speed; (4) 1-2 concrete setting changes with direction and rough size. Note which settings differ across cycles. If most cycles have <3 checkpoints, say the data is too thin to recalibrate and what to log. Informational only: no insulin/carb dosing instructions; remind to confirm with readings and care team.';
+      var sys='Review multiple saved glucose cycles for a type 1 diabetic (mg/dL) to tune settings. Each cycle lists the settings used (isf, lag=onset min, dia=insulin-action-ahead hrs, mgg=BG rise per g glucose, exd=exercise drain/hr) and checkpoints with actual vs predicted BG (residual = actual-predicted) and, where logged, actual vs predicted IOB (iobResid). The residuals are the signal, NOT predLow vs actualLow (which can match trivially when no readings were logged). CONTEXT NOTES: each cycle may have a "note" describing special circumstances (illness, alcohol, unusual meal, sensor issue, stress, time of day, etc.). Use the notes to ISOLATE anomalous cycles \u2014 their residuals should NOT drive generic setting changes; call them out separately. Base calibration suggestions on cycles whose notes describe ordinary conditions, or cycles without notes. Across the (non-anomalous) cycles, in under 200 words: (1) is there a systematic BG residual bias (positive = model runs below reality: glucose too weak / insulin too strong / drain too high; negative = opposite) and is it tied to exercise, dose size, or time of day; (2) what do IOB residuals say about dia; (3) does early-vs-late residual point to the onset lag or absorption speed; (4) 1-2 concrete setting changes with direction and rough size; (5) briefly note any anomalous cycles (per their notes) and that they were set aside. Note which settings differ across cycles. If most cycles have <3 checkpoints, say the data is too thin to recalibrate and what to log. Informational only: no insulin/carb dosing instructions; remind to confirm with readings and care team.';
       out.style.display='block'; out.textContent=await callClaude(sys, JSON.stringify(payload)); st.textContent='';
     }catch(e){ out.style.display='block'; out.textContent='AI request failed ('+e.message+'). Paste your Anthropic API key in the AI section to enable analysis.'; st.textContent=''; }
   }
