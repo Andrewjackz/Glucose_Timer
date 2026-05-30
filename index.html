@@ -281,7 +281,7 @@
       <p><b>Predicted low</b> is the lowest point of the forward curve. It's a planning estimate, not a guarantee — verify with a reading, especially before deciding not to treat.</p>
     </div>
   </details>
-  <div class="buildstamp">build 2026-05-27h &middot; planning aid only &mdash; not a medical device</div>
+  <div class="buildstamp">build 2026-05-27i &middot; planning aid only &mdash; not a medical device</div>
 </div>
 
 <script>
@@ -360,16 +360,20 @@ window.__startGlucoseApp=function(){
     for(var k=1;k<N;k++){ exCum[k]=exCum[k-1]+(exAt(absAt(k-1))? s.exd*DT/60 : 0); }
 
     var xRel=function(k){ return (absAt(k)-t0)/60000; };
-    var fc=[], noTab=[], gobS=[];
+    var fc=[], noTab=[], gobS=[], iobS=[];
     for(var k=0;k<N;k++){
       var x=xRel(k);
-      if(k<anchorIdx){ fc.push({x:x,y:null}); noTab.push({x:x,y:null}); }
+      if(k<anchorIdx){ fc.push({x:x,y:null}); noTab.push({x:x,y:null}); iobS.push({x:x,y:null}); }
       else{
         var rise=(tabRise[k]-tabRise[anchorIdx])+(foodRise[k]-foodRise[anchorIdx]);
         var drop=(insDrop[k]-insDrop[anchorIdx])+(exCum[k]-exCum[anchorIdx]);
         var base=(S0!=null?S0:0);
         fc.push({x:x,y:base+rise-drop});
         noTab.push({x:x,y:base+(foodRise[k]-foodRise[anchorIdx])-drop});
+        var tk2=absAt(k);
+        var iobV = iob*Math.max(0,Math.min(1, 1-(tk2-anchorT)/Wms));
+        for(var jj2=0;jj2<insulins.length;jj2++){ var ie2=insulins[jj2]; if(tk2>=ie2.t) iobV += ie2.units*Math.max(0,Math.min(1, 1-(tk2-ie2.t)/Wms)); }
+        iobS.push({x:x,y:iobV});
       }
       gobS.push({x:x,y:gobArr[k]});
     }
@@ -393,14 +397,14 @@ window.__startGlucoseApp=function(){
     var compare=null;
     if(lastBg){ var pi=idxAt(lastBg.t); var pv=(fc[pi]&&fc[pi].y!=null)?fc[pi].y:null; if(pv!=null) compare={actual:lastBg.value,pred:pv,delta:lastBg.value-pv,ago:Math.round((t0-lastBg.t)/60000)}; }
 
-    return {fc:fc,noTab:noTab,gob:gobS,actual:actual,nadV:nadV,nadX:nadX,iobNow:iobNow,
+    return {fc:fc,noTab:noTab,gob:gobS,iob:iobS,actual:actual,nadV:nadV,nadX:nadX,iobNow:iobNow,
             dropToCome:s.isf*iobNow,gobNow:gobArr[nowIdx],taken:taken,S0:S0,hasTab:tabs.length>0,t0:t0,
             totalLoggedInsulin:totalLoggedInsulin, bolusCount:insulins.filter(function(e){return e.t<=t0;}).length,
             bolusSumPast: insulins.filter(function(e){return e.t<=t0;}).reduce(function(a,e){return a+e.units;},0),
             predNow:predNow,compare:compare};
   }
 
-  var chart=null, vis={fc:true,noTab:true,gob:false,actual:true,insMarker:true,tabMarker:true,foodMarker:true};
+  var chart=null, vis={fc:true,noTab:true,gob:false,iob:false,actual:true,insMarker:true,tabMarker:true,foodMarker:true};
   var bandPlugin={ id:'band', beforeDatasetsDraw:function(c){ var s=state.settings; var ya=c.chartArea, ctx=c.ctx, y=c.scales.y; if(!y)return; var top=y.getPixelForValue(s.hi), bot=y.getPixelForValue(s.lo); ctx.save(); ctx.fillStyle='rgba(22,163,74,0.08)'; ctx.fillRect(ya.left,Math.max(ya.top,top),ya.right-ya.left,Math.min(ya.bottom,bot)-Math.max(ya.top,top)); ctx.strokeStyle='rgba(220,38,38,0.5)'; ctx.setLineDash([4,4]); ctx.lineWidth=1; var ly=y.getPixelForValue(s.lo); ctx.beginPath(); ctx.moveTo(ya.left,ly); ctx.lineTo(ya.right,ly); ctx.stroke(); ctx.setLineDash([]); ctx.restore(); } };
   var nowPlugin={ id:'nowl', afterDraw:function(c){ if(!c.scales.x)return; var x=c.scales.x.getPixelForValue(0), a=c.chartArea, ctx=c.ctx; ctx.save(); ctx.strokeStyle='#9aa3b1'; ctx.lineWidth=1; ctx.setLineDash([4,4]); ctx.beginPath(); ctx.moveTo(x,a.top); ctx.lineTo(x,a.bottom); ctx.stroke(); ctx.setLineDash([]); ctx.fillStyle='#9aa3b1'; ctx.font='11px IBM Plex Mono, monospace'; ctx.fillText('now',x+4,a.top+12); ctx.restore(); } };
   var eventMarkersPlugin={ id:'evmark', afterDatasetsDraw:function(c){
@@ -441,12 +445,14 @@ window.__startGlucoseApp=function(){
     ds.push({label:'no tablets',data:sim.noTab,parsing:false,borderColor:'#9aa3b1',borderWidth:1.6,borderDash:[6,4],pointRadius:0,tension:.3,spanGaps:false,hidden:!vis.noTab,order:2});
     if(sim.nadV!=null){ var col=sim.nadV<state.settings.lo?'#DC2626':(sim.nadV<state.settings.lo+15?'#D97706':'#16A34A'); ds.push({label:'low',data:[{x:sim.nadX,y:sim.nadV}],parsing:false,showLine:false,pointRadius:5,pointHoverRadius:6,borderColor:col,backgroundColor:col,order:0}); }
     ds.push({label:'GOB',data:sim.gob,parsing:false,borderColor:'#D97706',backgroundColor:'rgba(217,119,6,.10)',borderWidth:1.4,pointRadius:0,tension:.3,yAxisID:'yG',fill:true,hidden:!vis.gob,order:4});
+    ds.push({label:'IOB',data:sim.iob,parsing:false,borderColor:'#DC2626',backgroundColor:'rgba(220,38,38,.10)',borderWidth:1.4,pointRadius:0,tension:.3,yAxisID:'yI',fill:true,spanGaps:false,hidden:!vis.iob,order:5});
     if(sim.actual.length) ds.push({label:'actual',data:sim.actual,parsing:false,showLine:false,borderColor:'#16A34A',backgroundColor:'#16A34A',pointRadius:4,pointHoverRadius:5,hidden:!vis.actual,order:0});
     var opts={ responsive:true,maintainAspectRatio:false,animation:false,interaction:{mode:'nearest',intersect:false},
       scales:{ x:{type:'linear',title:{display:true,text:'clock time / minutes from now',color:'#8A93A1',font:{size:11}},grid:{color:'rgba(0,0,0,.05)'},ticks:{stepSize:30,color:'#8A93A1',font:{family:'IBM Plex Mono',size:10},callback:function(v){ var d=new Date(Date.now()+v*60000); var t=d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}); return [t, v===0?'now':(v>0?'+'+v:''+v)]; }}},
         y:{suggestedMin:40,suggestedMax:240,title:{display:true,text:'BG (mg/dL)',color:'#8A93A1',font:{size:11}},grid:{color:'rgba(0,0,0,.05)'},ticks:{color:'#8A93A1',font:{family:'IBM Plex Mono'}}},
-        yG:{position:'right',title:{display:true,text:'glucose on board (g)',color:'#8A93A1',font:{size:11}},grid:{drawOnChartArea:false},min:0,display:vis.gob,ticks:{color:'#8A93A1',font:{family:'IBM Plex Mono'}}} },
-      plugins:{legend:{display:false},tooltip:{callbacks:{title:function(i){ var v=i[0].parsed.x; var d=new Date(Date.now()+v*60000); return d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})+'  ('+(v>=0?'+':'')+Math.round(v)+' min)'; },label:function(c){ var l=c.dataset.label; if(l==='GOB')return 'On board: '+c.parsed.y.toFixed(1)+' g'; if(l==='actual')return (c.raw.anchor?'Start: ':'Actual: ')+Math.round(c.parsed.y)+' mg/dL'; if(l==='low')return 'Low: '+Math.round(c.parsed.y)+' mg/dL'; if(l==='no tablets')return 'No tablets: '+Math.round(c.parsed.y); return 'Forecast: '+Math.round(c.parsed.y)+' mg/dL'; }}}} };
+        yG:{position:'right',title:{display:true,text:'glucose on board (g)',color:'#8A93A1',font:{size:11}},grid:{drawOnChartArea:false},min:0,display:vis.gob,ticks:{color:'#8A93A1',font:{family:'IBM Plex Mono'}}},
+        yI:{position:'right',title:{display:true,text:'insulin on board (u)',color:'#8A93A1',font:{size:11}},grid:{drawOnChartArea:false},min:0,display:vis.iob,ticks:{color:'#8A93A1',font:{family:'IBM Plex Mono'}}} },
+      plugins:{legend:{display:false},tooltip:{callbacks:{title:function(i){ var v=i[0].parsed.x; var d=new Date(Date.now()+v*60000); return d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})+'  ('+(v>=0?'+':'')+Math.round(v)+' min)'; },label:function(c){ var l=c.dataset.label; if(l==='GOB')return 'On board: '+c.parsed.y.toFixed(1)+' g'; if(l==='IOB')return 'IOB: '+c.parsed.y.toFixed(2)+' u'; if(l==='actual')return (c.raw.anchor?'Start: ':'Actual: ')+Math.round(c.parsed.y)+' mg/dL'; if(l==='low')return 'Low: '+Math.round(c.parsed.y)+' mg/dL'; if(l==='no tablets')return 'No tablets: '+Math.round(c.parsed.y); return 'Forecast: '+Math.round(c.parsed.y)+' mg/dL'; }}}} };
     if(chart){ chart.data.datasets=ds; chart.options=opts; chart.update('none'); }
     else chart=new Chart(document.getElementById('chart'),{type:'line',data:{datasets:ds},options:opts,plugins:[bandPlugin,nowPlugin,eventMarkersPlugin]});
   }
@@ -460,6 +466,7 @@ window.__startGlucoseApp=function(){
     item('noTab','no tablets','border-top:3px dashed #9aa3b1');
     item('actual','actual','border-top:3px solid #16A34A');
     item('gob','glucose on board','border-top:3px solid #D97706');
+    item('iob','insulin on board','border-top:3px solid #DC2626');
     markerItem('insMarker','insulin mark','\u25BC','#DC2626');
     markerItem('tabMarker','tablet mark','\u25B2','#D97706');
     markerItem('foodMarker','food mark','\u25B3','#B45309');
