@@ -60,6 +60,8 @@
   button.primary:hover{background:#1d57cf;border-color:#1d57cf}
   button.big{padding:13px 18px;font-size:16px;font-weight:600;border-radius:11px}
   button.danger-ghost{color:var(--red);border-color:#eccfcf}
+  button.logbtn{background:var(--red);color:#fff;border-color:var(--red)}
+  button.logbtn:hover{background:#B91C1C;border-color:#B91C1C}
   button.toggle{font-weight:500}
   button.toggle.on{background:var(--green);border-color:var(--green);color:#fff}
   input[type=number],input[type=text],input[type=password],select{font-family:inherit;font-size:15px;color:var(--ink);background:var(--surface);border:1px solid var(--line2);border-radius:var(--radius-sm);padding:8px 10px;width:100%}
@@ -198,7 +200,7 @@
         <div class="field grow"><label class="fl">actual BG (mg/dL)</label><input class="num" id="bgVal" type="number" min="0" step="1" placeholder="e.g. 95"/></div>
         <div class="field w-sm"><label class="fl">IOB now (u)</label><input class="num" id="bgIob" type="number" min="0" step="0.05" placeholder="opt."/></div>
         <div class="field w-sm"><label class="fl">min ago</label><input class="num" id="bgAgo" type="number" min="0" step="1" value="0"/></div>
-        <div class="field"><label class="fl">&nbsp;</label><button id="addBg">Log</button></div>
+        <div class="field"><label class="fl">&nbsp;</label><button id="addBg" class="logbtn">Log</button></div>
       </div>
       <div class="help">Each time you check during a cycle, drop the real BG (and the IOB off the Omnipod, if you have it). It records onto the chart and stores what the model predicted at that moment &mdash; predicted vs actual BG, and predicted vs actual IOB &mdash; without re-anchoring. That predicted-vs-actual gap is what the analysis uses to tune your settings. (Use "Set now" up top to restart the forecast from a fresh BG/IOB.)</div>
     </div>
@@ -266,7 +268,7 @@
       <p><b>Predicted low</b> is the lowest point of the forward curve. It's a planning estimate, not a guarantee — verify with a reading, especially before deciding not to treat.</p>
     </div>
   </details>
-  <div class="buildstamp">build 2026-05-27c &middot; planning aid only &mdash; not a medical device</div>
+  <div class="buildstamp">build 2026-05-27d &middot; planning aid only &mdash; not a medical device</div>
 </div>
 
 <script>
@@ -419,10 +421,21 @@ window.__startGlucoseApp=function(){
       if(sim.compare){ var d=Math.round(sim.compare.delta); var agoTxt=sim.compare.ago>0?(' '+sim.compare.ago+'m ago'):''; document.getElementById('predNowSub').textContent='actual '+Math.round(sim.compare.actual)+agoTxt+' vs model '+Math.round(sim.compare.pred)+' ('+(d>=0?'+':'')+d+')'; pc.className='card '+(Math.abs(sim.compare.delta)<=15?'flag-green':(Math.abs(sim.compare.delta)<=30?'flag-amber':'flag-red')); }
       else { document.getElementById('predNowSub').textContent='log a reading to compare'; pc.className='card'; }
     } else { document.getElementById('predNowVal').textContent='—'; document.getElementById('predNowSub').textContent='set a starting BG'; pc.className='card'; }
-    document.getElementById('iobVal').textContent=sim.iobNow.toFixed(1);
-    document.getElementById('iobSub').textContent= sim.iobNow>0.01? ('drop to come \u2248 -'+Math.round(sim.dropToCome)+' mg/dL') : 'no insulin logged';
+    var s=state.settings;
+    var startIOB = state.start? (state.start.iob||0) : 0;
+    var insUsed = Math.max(0, startIOB - sim.iobNow);
+    var dropDone = s.isf * insUsed;
+    document.getElementById('iobVal').textContent=sim.iobNow.toFixed(2);
+    document.getElementById('iobSub').textContent = startIOB>0.01
+      ? ('start '+startIOB.toFixed(2)+'u \u00b7 \u2212'+Math.round(dropDone)+' done, \u2212'+Math.round(sim.dropToCome)+' to come')
+      : 'no insulin logged';
+    var absorbed = Math.max(0, sim.taken - sim.gobNow);
+    var riseDone = absorbed * s.mgg;
+    var riseAhead = sim.gobNow * s.mgg;
     document.getElementById('gobVal').textContent=sim.gobNow.toFixed(1);
-    document.getElementById('gobSub').textContent=sim.taken.toFixed(0)+' g taken \u00b7 '+sim.gobNow.toFixed(1)+' g still to absorb';
+    document.getElementById('gobSub').textContent = sim.taken>0.01
+      ? (sim.taken.toFixed(0)+' g taken \u00b7 +'+Math.round(riseDone)+' done, +'+Math.round(riseAhead)+' to come')
+      : '0 g taken';
     renderLog(); renderLegend(); buildChart(sim);
   }
 
@@ -444,9 +457,13 @@ window.__startGlucoseApp=function(){
       else if(e.type==='food'){ pill='<span class="pill food">food</span>'; detail='<span class="num">'+e.grams+' g</span> <span class="st">'+e.speed+'</span>'; }
       else if(e.type==='bg'){ pill='<span class="pill bg">check</span>'; detail='<span class="num">'+e.value+' mg/dL'+(e.iob!=null?' / '+e.iob+'u':'')+'</span>'; }
       else if(e.type==='start'){ pill='<span class="pill bg">now</span>'; detail='<span class="num">'+e.bg+' mg/dL'+((e.iob)?' / '+e.iob+' u IOB':'')+'</span>'; }
-      else if(e.type==='exercise'){ pill='<span class="pill ex">exercise</span>'; detail=e.end?('<span class="num">'+clock(e.t)+'\u2013'+clock(e.end)+'</span>'):'<span class="st">ongoing</span>'; }
+      else if(e.type==='exercise'){ pill='<span class="pill ex">exercise</span>'; var nowT=now(); detail = (!e.end)? '<span class="st">ongoing</span>' : (e.end>nowT)? ('<span class="num">'+clock(e.t)+'\u2013'+clock(e.end)+'</span> <span class="st">(planned, ongoing)</span>') : ('<span class="num">'+clock(e.t)+'\u2013'+clock(e.end)+'</span>'); }
       if(e.type==='start'){ actions='<span class="x" data-delstart="1">\u2715</span>'; }
-      else { actions='<button class="mini2" data-note="'+e.id+'">note</button><label class="excl"><input type="checkbox" data-excl="'+e.id+'"'+(e.excluded?' checked':'')+'/>excl</label><span class="x" data-del="'+e.id+'">\u2715</span>'; }
+      else {
+        var stopBtn='';
+        if(e.type==='exercise' && (!e.end || e.end>now())) stopBtn='<button class="mini2" data-stopex="'+e.id+'">stop now</button>';
+        actions='<button class="mini2" data-note="'+e.id+'">note</button>'+stopBtn+'<label class="excl"><input type="checkbox" data-excl="'+e.id+'"'+(e.excluded?' checked':'')+'/>excl</label><span class="x" data-del="'+e.id+'">\u2715</span>';
+      }
       var noteRow = e.note? '<div class="st" style="font-style:italic">\u201c'+esc(e.note)+'\u201d</div>' : '';
       h+='<tr'+(e.excluded?' class="excl-row"':'')+'><td>'+time+'</td><td>'+pill+'</td><td>'+detail+noteRow+'</td><td style="text-align:right;white-space:nowrap">'+actions+'</td></tr>';
     });
@@ -455,6 +472,7 @@ window.__startGlucoseApp=function(){
     box.querySelectorAll('[data-delstart]').forEach(function(b){ b.onclick=function(){ state.start=null; persist(); render(); }; });
     box.querySelectorAll('[data-note]').forEach(function(b){ b.onclick=function(){ setNote(b.getAttribute('data-note')); }; });
     box.querySelectorAll('[data-excl]').forEach(function(b){ b.onchange=function(){ toggleExcl(b.getAttribute('data-excl'), b.checked); }; });
+    box.querySelectorAll('[data-stopex]').forEach(function(b){ b.onclick=function(){ var s=findRec(b.getAttribute('data-stopex')); if(s){ s.end=now(); persist(); setExBtn(); render(); } }; });
   }
   function findRec(id){ var i; for(i=0;i<state.events.length;i++) if(state.events[i].id===id) return state.events[i]; for(i=0;i<state.exercise.length;i++) if(state.exercise[i].id===id) return state.exercise[i]; return null; }
   function setNote(id){ var r=findRec(id); if(!r)return; var t=prompt('Comment for this record:', r.note||''); if(t===null)return; if(t.trim()) r.note=t.trim(); else delete r.note; persist(); render(); }
@@ -483,14 +501,25 @@ window.__startGlucoseApp=function(){
     var arr=reads.map(function(g){ var p=predictAbsBG(ctx,g.t); var r={min:Math.round((g.t-st0)/60000),actual:g.value,predicted:p!=null?Math.round(p):null,residual:p!=null?Math.round(g.value-p):null};
       if(g.iob!=null){ var ip=predictedIOBAt(ctx,g.t); r.iobActual=g.iob; r.iobPred=ip!=null?Math.round(ip*100)/100:null; r.iobResid=ip!=null?Math.round((g.iob-ip)*100)/100:null; }
       return r; });
+    /* slopes (mg/dL per min) between consecutive checkpoints \u2014 distinguishes timing from amplitude errors */
+    for(var i=1;i<arr.length;i++){ var prev=arr[i-1], cur=arr[i]; var dt=cur.min-prev.min;
+      if(dt>0){
+        if(cur.actual!=null && prev.actual!=null) cur.actualSlope=Math.round((cur.actual-prev.actual)/dt*100)/100;
+        if(cur.predicted!=null && prev.predicted!=null) cur.predSlope=Math.round((cur.predicted-prev.predicted)/dt*100)/100;
+        if(cur.actualSlope!=null && cur.predSlope!=null) cur.slopeDiff=Math.round((cur.actualSlope-cur.predSlope)*100)/100;
+      } }
     var res=arr.filter(function(r){return r.residual!=null;});
     var iobs=arr.filter(function(r){return r.iobResid!=null;});
+    var slopes=arr.filter(function(r){return r.slopeDiff!=null;});
     var summary=null;
     if(res.length){ var mean=res.reduce(function(a,r){return a+r.residual;},0)/res.length;
       var half=Math.floor(res.length/2);
       var avg=function(a){ return a.length?Math.round(a.reduce(function(x,r){return x+r.residual;},0)/a.length):null; };
+      var residRange = res.length>1 ? (Math.max.apply(null,res.map(function(r){return r.residual;})) - Math.min.apply(null,res.map(function(r){return r.residual;}))) : 0;
       summary={ n:res.length, meanResidual:Math.round(mean), earlyMean:avg(res.slice(0,half)), lateMean:avg(res.slice(half)),
-                nIob:iobs.length, meanIobResid: iobs.length? Math.round(iobs.reduce(function(a,r){return a+r.iobResid;},0)/iobs.length*100)/100 : null }; }
+                residualRange: residRange,
+                nIob:iobs.length, meanIobResid: iobs.length? Math.round(iobs.reduce(function(a,r){return a+r.iobResid;},0)/iobs.length*100)/100 : null,
+                nSlopes:slopes.length, meanSlopeDiff: slopes.length? Math.round(slopes.reduce(function(a,r){return a+r.slopeDiff;},0)/slopes.length*100)/100 : null }; }
     return {readings:arr, summary:summary};
   }
 
@@ -574,7 +603,7 @@ window.__startGlucoseApp=function(){
                 food:c.events.filter(function(e){return e.type==='food'&&!e.excluded;}).map(function(e){return {grams:e.grams,speed:e.speed,min:Math.round((e.t-cycleStartT(c))/60000)};}),
                 exercise_min:cycleExerciseMin(c), predLow:m.predLow, actualLow:m.actualMin,
                 checkpoints:rr.readings, residualSummary:rr.summary };
-      var sys='Analyse one glucose cycle for a type 1 diabetic (mg/dL) to tune settings. Settings used: isf, lag (onset min before glucose acts), dia (insulin-action-ahead hrs), mgg (BG rise per g glucose), exd (exercise drain/hr). KEY DATA = checkpoints: each has actual vs predicted BG and residual (actual-predicted), and where logged actual vs predicted IOB and iobResid. Use the residuals as the calibration signal: BG residual consistently POSITIVE = model runs below reality (glucose too weak / insulin too strong / drain too high) -> e.g. raise mgg, raise dia, or lower exd; consistently NEGATIVE = opposite. Early-vs-late residual split points to onset lag or absorption-speed errors. IOB residual: actual IOB draining faster than predicted means dia too long (shorten), slower means lengthen. CONTEXT: if "note" describes one-off circumstances (illness, alcohol, unusual meal, sensor issue, stress, missed insulin, etc.), treat the residuals as context-laden and explicitly say they should NOT drive a generic setting change \u2014 explain them by the note instead. In under 150 words: (1) direction and rough size of any BG bias and what it implies, AND whether the note explains it; (2) what the IOB residuals say about dia, if present; (3) 1-2 concrete setting changes (which, which way, rough amount) \u2014 or "no change indicated by this cycle" if the note explains it. If fewer than ~3 checkpoints spanning the cycle, say the data is insufficient and what to log. Informational only: no insulin/carb dosing instructions; remind to confirm with readings and care team.';
+      var sys='Analyse one glucose cycle for a type 1 diabetic (mg/dL) to tune settings. Settings used: isf, lag (onset min before glucose acts), dia (insulin-action-ahead hrs), mgg (BG rise per g glucose), exd (exercise drain/hr). KEY DATA = checkpoints: each has actual vs predicted BG and residual (actual-predicted), actualSlope and predSlope (mg/dL per min between consecutive checkpoints) and slopeDiff (actualSlope-predSlope), and where logged actual vs predicted IOB and iobResid. CRITICAL distinction \u2014 use slopes AND residuals together to separate TIMING from AMPLITUDE errors: (a) if residuals are consistently offset BUT slopes match (slopeDiff~0), the model has the right kinetics with a wrong baseline/timing \u2014 likely an onset lag or anchor issue, not an amplitude one; (b) if slopeDiff is consistently non-zero, that is an amplitude/kinetics issue (mgg, isf, exd, dia). For (b): positive slopeDiff means actual rises faster / falls slower than predicted -> glucose stronger or insulin/exercise weaker than modelled; negative slopeDiff means actual falls faster / rises slower -> opposite. IOB residual: actual IOB draining faster than predicted means dia too long (shorten), slower means lengthen. CONTEXT: if "note" describes one-off circumstances (illness, alcohol, unusual meal, sensor issue, stress, missed insulin, etc.), treat the residuals as context-laden and explicitly say they should NOT drive a generic setting change \u2014 explain them by the note instead. In under 170 words: (1) classify the error as primarily TIMING or AMPLITUDE based on slopes vs gap, with evidence; (2) direction and rough size of any BG bias and what it implies, AND whether the note explains it; (3) what the IOB residuals say about dia, if present; (4) 1-2 concrete setting changes (which, which way, rough amount) \u2014 or "no change indicated by this cycle" if the note explains it. If fewer than ~3 checkpoints spanning the cycle, say the data is insufficient and what to log. Informational only: no insulin/carb dosing instructions; remind to confirm with readings and care team.';
       out.style.display='block'; out.textContent=(c.label?('['+c.label+']\n'):'')+await callClaude(sys, JSON.stringify(pay)); st.textContent='';
     }catch(e){ out.style.display='block'; out.textContent='AI request failed ('+e.message+'). Paste your Anthropic API key in the AI section to enable analysis.'; st.textContent=''; }
   }
@@ -615,7 +644,7 @@ window.__startGlucoseApp=function(){
                  predLow:c.metrics?c.metrics.predLow:null, actualLow:c.metrics?c.metrics.actualMin:null,
                  residualSummary:rr.summary, checkpoints:rr.readings };
       });
-      var sys='Review multiple saved glucose cycles for a type 1 diabetic (mg/dL) to tune settings. Each cycle lists the settings used (isf, lag=onset min, dia=insulin-action-ahead hrs, mgg=BG rise per g glucose, exd=exercise drain/hr) and checkpoints with actual vs predicted BG (residual = actual-predicted) and, where logged, actual vs predicted IOB (iobResid). The residuals are the signal, NOT predLow vs actualLow (which can match trivially when no readings were logged). CONTEXT NOTES: each cycle may have a "note" describing special circumstances (illness, alcohol, unusual meal, sensor issue, stress, time of day, etc.). Use the notes to ISOLATE anomalous cycles \u2014 their residuals should NOT drive generic setting changes; call them out separately. Base calibration suggestions on cycles whose notes describe ordinary conditions, or cycles without notes. Across the (non-anomalous) cycles, in under 200 words: (1) is there a systematic BG residual bias (positive = model runs below reality: glucose too weak / insulin too strong / drain too high; negative = opposite) and is it tied to exercise, dose size, or time of day; (2) what do IOB residuals say about dia; (3) does early-vs-late residual point to the onset lag or absorption speed; (4) 1-2 concrete setting changes with direction and rough size; (5) briefly note any anomalous cycles (per their notes) and that they were set aside. Note which settings differ across cycles. If most cycles have <3 checkpoints, say the data is too thin to recalibrate and what to log. Informational only: no insulin/carb dosing instructions; remind to confirm with readings and care team.';
+      var sys='Review multiple saved glucose cycles for a type 1 diabetic (mg/dL) to tune settings, using the historical pattern not just one cycle. Each cycle lists the settings used (isf, lag=onset min, dia=insulin-action-ahead hrs, mgg=BG rise per g glucose, exd=exercise drain/hr) and checkpoints with actual vs predicted BG (residual = actual-predicted), actualSlope vs predSlope (mg/dL per min) and slopeDiff. The residuals AND slopes are the signal, NOT predLow vs actualLow. CRITICAL distinction \u2014 separate TIMING from AMPLITUDE errors using slopes: (a) consistently offset residuals BUT matching slopes (slopeDiff~0 across cycles) = timing/lag/anchor error \u2014 adjust onset lag, not amplitude; (b) consistent non-zero slopeDiff = amplitude/kinetics error (mgg, isf, exd, dia). Positive slopeDiff -> glucose stronger or insulin/exercise weaker than modelled; negative -> opposite. CONTEXT NOTES: each cycle may have a "note" describing special circumstances (illness, alcohol, unusual meal, sensor issue, stress, time of day, post-exercise, etc.). Use the notes to ISOLATE anomalous cycles \u2014 their residuals and slopes should NOT drive generic setting changes; call them out separately. Base calibration on cycles whose notes are ordinary or absent. Across the non-anomalous cycles, in under 220 words: (1) classify the dominant error as TIMING or AMPLITUDE (cite slope evidence); (2) systematic BG bias direction and any tie to exercise, dose size, or time of day; (3) what IOB residuals say about dia; (4) early-vs-late residual pattern; (5) 1-2 concrete setting changes with direction and rough size; (6) briefly note anomalous cycles set aside (by their notes). If most cycles have <3 checkpoints, say the data is too thin and what to log. Informational only: no insulin/carb dosing instructions; remind to confirm with readings and care team.';
       out.style.display='block'; out.textContent=await callClaude(sys, JSON.stringify(payload)); st.textContent='';
     }catch(e){ out.style.display='block'; out.textContent='AI request failed ('+e.message+'). Paste your Anthropic API key in the AI section to enable analysis.'; st.textContent=''; }
   }
@@ -664,7 +693,7 @@ window.__startGlucoseApp=function(){
         tablets:state.events.filter(function(e){return e.type==='tablet'&&!e.excluded;}).map(function(e){return {grams:e.grams,minAgo:Math.round((now()-e.t)/60000)};}),
         food:state.events.filter(function(e){return e.type==='food'&&!e.excluded;}).map(function(e){return {grams:e.grams,speed:e.speed,minAgo:Math.round((now()-e.t)/60000)};}),
         checkpoints:rr.readings, residualSummary:rr.summary };
-      var sys='Analyse the current glucose cycle for a type 1 diabetic (mg/dL) to tune settings. Settings: isf, lag (onset min before glucose acts), dia (insulin-action-ahead hrs), mgg (BG rise per g glucose), exd (exercise drain/hr). KEY DATA = checkpoints: each has actual vs predicted BG with residual (actual-predicted), and where logged actual vs predicted IOB with iobResid. Use residuals as the signal: BG residual consistently POSITIVE = model runs below reality (glucose too weak / insulin too strong / drain too high); NEGATIVE = opposite. Early-vs-late residual split points to onset lag / absorption speed. IOB residual: actual draining faster than predicted = dia too long; slower = too short. In under 140 words: (1) BG bias direction/size and what it implies; (2) what IOB residuals say about dia, if present; (3) one concrete setting change (which, which way, rough amount). If no checkpoints with residuals, say you cannot calibrate yet and to log actual BG (and IOB) during the cycle. Informational only: no insulin/carb dosing instructions; remind to confirm with a reading and their care team.';
+      var sys='Analyse the current glucose cycle for a type 1 diabetic (mg/dL) to tune settings. Settings: isf, lag (onset min before glucose acts), dia (insulin-action-ahead hrs), mgg (BG rise per g glucose), exd (exercise drain/hr). KEY DATA = checkpoints: each has actual vs predicted BG with residual (actual-predicted), actualSlope vs predSlope (mg/dL per min) and slopeDiff, and where logged actual vs predicted IOB with iobResid. CRITICAL distinction: if residuals are offset but slopes match (slopeDiff~0), the error is TIMING/baseline \u2014 likely onset lag; if slopeDiff is non-zero, the error is AMPLITUDE/kinetics (mgg, isf, exd, dia). Positive slopeDiff -> glucose stronger or insulin/exercise weaker; negative -> opposite. IOB residual: actual draining faster than predicted = dia too long; slower = too short. In under 160 words: (1) classify the error as TIMING or AMPLITUDE with slope evidence; (2) BG bias direction/size and what it implies; (3) what IOB residuals say about dia, if present; (4) one concrete setting change (which, which way, rough amount). If no checkpoints with residuals, say you cannot calibrate yet and to log actual BG (and IOB) during the cycle. Informational only: no insulin/carb dosing instructions; remind to confirm with a reading and their care team.';
       out.style.display='block'; out.textContent=await callClaude(sys,JSON.stringify(pay)); st.textContent='';
     }catch(e){ out.style.display='block'; out.textContent='AI request failed ('+e.message+'). Paste your Anthropic API key above to enable AI features on your live site.'; st.textContent=''; }
   }
