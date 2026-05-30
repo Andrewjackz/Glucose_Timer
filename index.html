@@ -80,6 +80,7 @@
   .legend span.off{opacity:.35}
   .swatch{width:16px;height:0;border-top-width:3px;border-top-style:solid;display:inline-block}
   .swatch.band{height:11px;width:14px;border:none;border-radius:3px}
+  .swatch.mark{height:14px;border:none;line-height:14px;font-size:13px;text-align:center;vertical-align:middle;width:14px}
   .help{font-size:12px;color:var(--faint);margin-top:3px;line-height:1.4}
   table.log{width:100%;border-collapse:collapse;font-size:14px}
   table.log th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);font-weight:500;padding:6px 8px;border-bottom:1px solid var(--line)}
@@ -280,7 +281,7 @@
       <p><b>Predicted low</b> is the lowest point of the forward curve. It's a planning estimate, not a guarantee — verify with a reading, especially before deciding not to treat.</p>
     </div>
   </details>
-  <div class="buildstamp">build 2026-05-27f &middot; planning aid only &mdash; not a medical device</div>
+  <div class="buildstamp">build 2026-05-27h &middot; planning aid only &mdash; not a medical device</div>
 </div>
 
 <script>
@@ -399,9 +400,40 @@ window.__startGlucoseApp=function(){
             predNow:predNow,compare:compare};
   }
 
-  var chart=null, vis={fc:true,noTab:true,gob:false,actual:true};
+  var chart=null, vis={fc:true,noTab:true,gob:false,actual:true,insMarker:true,tabMarker:true,foodMarker:true};
   var bandPlugin={ id:'band', beforeDatasetsDraw:function(c){ var s=state.settings; var ya=c.chartArea, ctx=c.ctx, y=c.scales.y; if(!y)return; var top=y.getPixelForValue(s.hi), bot=y.getPixelForValue(s.lo); ctx.save(); ctx.fillStyle='rgba(22,163,74,0.08)'; ctx.fillRect(ya.left,Math.max(ya.top,top),ya.right-ya.left,Math.min(ya.bottom,bot)-Math.max(ya.top,top)); ctx.strokeStyle='rgba(220,38,38,0.5)'; ctx.setLineDash([4,4]); ctx.lineWidth=1; var ly=y.getPixelForValue(s.lo); ctx.beginPath(); ctx.moveTo(ya.left,ly); ctx.lineTo(ya.right,ly); ctx.stroke(); ctx.setLineDash([]); ctx.restore(); } };
   var nowPlugin={ id:'nowl', afterDraw:function(c){ if(!c.scales.x)return; var x=c.scales.x.getPixelForValue(0), a=c.chartArea, ctx=c.ctx; ctx.save(); ctx.strokeStyle='#9aa3b1'; ctx.lineWidth=1; ctx.setLineDash([4,4]); ctx.beginPath(); ctx.moveTo(x,a.top); ctx.lineTo(x,a.bottom); ctx.stroke(); ctx.setLineDash([]); ctx.fillStyle='#9aa3b1'; ctx.font='11px IBM Plex Mono, monospace'; ctx.fillText('now',x+4,a.top+12); ctx.restore(); } };
+  var eventMarkersPlugin={ id:'evmark', afterDatasetsDraw:function(c){
+    if(!c.scales.x || !c.scales.y) return;
+    var ctx=c.ctx, a=c.chartArea, t0=Date.now();
+    state.events.forEach(function(e){
+      if(e.excluded) return;
+      var spec=null;
+      if(e.type==='insulin' && vis.insMarker) spec={color:'#DC2626', guide:'rgba(220,38,38,0.45)', up:false, fill:true,  label:'-'+e.units+'u'};
+      else if(e.type==='tablet'  && vis.tabMarker)  spec={color:'#D97706', guide:'rgba(217,119,6,0.45)', up:true,  fill:true,  label:'+'+e.grams+'g'};
+      else if(e.type==='food'    && vis.foodMarker) spec={color:'#B45309', guide:'rgba(180,83,9,0.45)', up:true,  fill:false, label:'+'+e.grams+'g'};
+      if(!spec) return;
+      var xMin=(e.t-t0)/60000;
+      var px=c.scales.x.getPixelForValue(xMin);
+      if(px<a.left-2 || px>a.right+2) return;
+      ctx.save();
+      ctx.strokeStyle=spec.guide; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+      ctx.beginPath(); ctx.moveTo(px,a.top+12); ctx.lineTo(px,a.bottom); ctx.stroke();
+      ctx.setLineDash([]);
+      var ty=a.top+2;
+      ctx.fillStyle=spec.color; ctx.strokeStyle=spec.color; ctx.lineWidth=1.5;
+      ctx.beginPath();
+      if(spec.up){ ctx.moveTo(px-5,ty+9); ctx.lineTo(px+5,ty+9); ctx.lineTo(px,ty); }
+      else      { ctx.moveTo(px-5,ty);   ctx.lineTo(px+5,ty);   ctx.lineTo(px,ty+9); }
+      ctx.closePath();
+      if(spec.fill) ctx.fill(); else ctx.stroke();
+      ctx.fillStyle=spec.color; ctx.font='10px IBM Plex Mono, monospace'; ctx.textBaseline='top';
+      var w=ctx.measureText(spec.label).width;
+      var lx=(px+8+w > a.right) ? (px-8-w) : (px+8);
+      ctx.fillText(spec.label, lx, ty);
+      ctx.restore();
+    });
+  } };
 
   function buildChart(sim){
     var ds=[];
@@ -416,17 +448,21 @@ window.__startGlucoseApp=function(){
         yG:{position:'right',title:{display:true,text:'glucose on board (g)',color:'#8A93A1',font:{size:11}},grid:{drawOnChartArea:false},min:0,display:vis.gob,ticks:{color:'#8A93A1',font:{family:'IBM Plex Mono'}}} },
       plugins:{legend:{display:false},tooltip:{callbacks:{title:function(i){ var v=i[0].parsed.x; var d=new Date(Date.now()+v*60000); return d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})+'  ('+(v>=0?'+':'')+Math.round(v)+' min)'; },label:function(c){ var l=c.dataset.label; if(l==='GOB')return 'On board: '+c.parsed.y.toFixed(1)+' g'; if(l==='actual')return (c.raw.anchor?'Start: ':'Actual: ')+Math.round(c.parsed.y)+' mg/dL'; if(l==='low')return 'Low: '+Math.round(c.parsed.y)+' mg/dL'; if(l==='no tablets')return 'No tablets: '+Math.round(c.parsed.y); return 'Forecast: '+Math.round(c.parsed.y)+' mg/dL'; }}}} };
     if(chart){ chart.data.datasets=ds; chart.options=opts; chart.update('none'); }
-    else chart=new Chart(document.getElementById('chart'),{type:'line',data:{datasets:ds},options:opts,plugins:[bandPlugin,nowPlugin]});
+    else chart=new Chart(document.getElementById('chart'),{type:'line',data:{datasets:ds},options:opts,plugins:[bandPlugin,nowPlugin,eventMarkersPlugin]});
   }
 
   function renderLegend(){
     var el=document.getElementById('legend'); el.innerHTML='';
     function item(key,label,style){ var sp=document.createElement('span'); sp.className=vis[key]?'':'off'; sp.innerHTML='<span class="swatch" style="'+style+'"></span>'+label; sp.onclick=function(){ vis[key]=!vis[key]; render(); }; el.appendChild(sp); }
+    function markerItem(key,label,glyph,color){ var sp=document.createElement('span'); sp.className=vis[key]?'':'off'; sp.innerHTML='<span class="swatch mark" style="color:'+color+'">'+glyph+'</span>'+label; sp.onclick=function(){ vis[key]=!vis[key]; render(); }; el.appendChild(sp); }
     function staticItem(label,style){ var sp=document.createElement('span'); sp.style.cursor='default'; sp.innerHTML='<span class="swatch '+(style.indexOf('height')>=0?'band':'')+'" style="'+style+'"></span>'+label; el.appendChild(sp); }
     item('fc','forecast','border-top:3px solid #2563EB');
     item('noTab','no tablets','border-top:3px dashed #9aa3b1');
     item('actual','actual','border-top:3px solid #16A34A');
     item('gob','glucose on board','border-top:3px solid #D97706');
+    markerItem('insMarker','insulin mark','\u25BC','#DC2626');
+    markerItem('tabMarker','tablet mark','\u25B2','#D97706');
+    markerItem('foodMarker','food mark','\u25B3','#B45309');
     staticItem('target range','height:11px;width:14px;background:rgba(22,163,74,0.25);border-radius:3px');
   }
 
