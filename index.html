@@ -268,7 +268,7 @@
       <p><b>Predicted low</b> is the lowest point of the forward curve. It's a planning estimate, not a guarantee — verify with a reading, especially before deciding not to treat.</p>
     </div>
   </details>
-  <div class="buildstamp">build 2026-05-27d &middot; planning aid only &mdash; not a medical device</div>
+  <div class="buildstamp">build 2026-05-27e &middot; planning aid only &mdash; not a medical device</div>
 </div>
 
 <script>
@@ -331,7 +331,7 @@ window.__startGlucoseApp=function(){
     var tabRise=new Array(N).fill(0), foodRise=new Array(N).fill(0), gobArr=new Array(N).fill(0);
     var lag=(s.lag||0);
     tabs.forEach(function(t){ for(var k=0;k<N;k++){ var dt=(absAt(k)-t.t)/60000; if(dt<=0)continue; var et=dt-lag; var ab=et<=0?0:1-Math.exp(-s.ka*et); tabRise[k]+=t.grams*s.mgg*ab; gobArr[k]+=t.grams*(1-ab); } });
-    if(state.includeFood){ foods.forEach(function(f){ var ka=FOOD_KA[f.speed]||FOOD_KA.med; for(var k=0;k<N;k++){ var dt=(absAt(k)-f.t)/60000; if(dt<=0)continue; var et=dt-lag; foodRise[k]+=f.grams*s.mgg*(et<=0?0:1-Math.exp(-ka*et)); } }); }
+    if(state.includeFood){ foods.forEach(function(f){ var ka=FOOD_KA[f.speed]||FOOD_KA.med; for(var k=0;k<N;k++){ var dt=(absAt(k)-f.t)/60000; if(dt<=0)continue; var et=dt-lag; var ab=et<=0?0:1-Math.exp(-ka*et); foodRise[k]+=f.grams*s.mgg*ab; gobArr[k]+=f.grams*(1-ab); } }); }
 
     var iob = (state.start && state.start.iob) ? state.start.iob : 0;
     var Wms=Math.max(1, s.dia)*60*60000;
@@ -360,8 +360,9 @@ window.__startGlucoseApp=function(){
     for(var k=nowIdx;k<N;k++){ if(fc[k].y!=null && fc[k].y<nadV){ nadV=fc[k].y; nadX=fc[k].x; } }
     if(nadV===1e9){ nadV=null; }
 
-    var iobNow=iob;
+    var iobNow = state.start ? iob*Math.max(0,Math.min(1, 1-(t0-anchorT)/Wms)) : 0;
     var taken=tabs.reduce(function(a,e){return a+(e.t<=t0?e.grams:0);},0);
+    if(state.includeFood){ taken+=foods.reduce(function(a,e){return a+(e.t<=t0?e.grams:0);},0); }
 
     var actual=bgs.map(function(g){return {x:(g.t-t0)/60000,y:g.value};});
     if(state.start) actual.push({x:(state.start.t-t0)/60000,y:state.start.bg,anchor:true});
