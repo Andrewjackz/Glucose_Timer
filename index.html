@@ -101,6 +101,10 @@
   tr.excl-row{opacity:.5}
   tr.excl-row .num{text-decoration:line-through}
   .buildstamp{text-align:center;color:var(--faint);font-size:11px;padding:18px 0 6px}
+  .modal{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center}
+  .modal-bg{position:absolute;inset:0;background:rgba(0,0,0,0.40)}
+  .modal-panel{position:relative;background:var(--surface);border-radius:12px;padding:16px;width:min(440px,94vw);max-height:92vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,0.18)}
+  .modal-header{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:14px}
   .x:hover{background:#F2D9D9;color:var(--red)}
   .empty{color:var(--faint);font-size:14px;padding:14px 4px;text-align:center}
   details{margin-bottom:14px}
@@ -220,7 +224,7 @@
   </details>
 
   <div class="panel">
-    <div class="sec-title" style="display:flex;justify-content:space-between;align-items:center"><span>Events</span><span style="display:flex;gap:6px"><button id="saveCycle" class="primary" style="font-weight:500;padding:5px 12px">Save cycle</button><button id="clearEvents" class="danger-ghost" style="font-weight:400;padding:5px 10px">Clear all</button></span></div>
+    <div class="sec-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px"><span>Events <span id="saveStatus" class="st" style="font-weight:400;margin-left:6px"></span></span><span style="display:flex;gap:6px"><button id="saveCycle" class="primary" style="font-weight:500;padding:5px 12px">Save cycle</button><button id="clearEvents" class="danger-ghost" style="font-weight:400;padding:5px 10px">Clear all</button></span></div>
     <div id="logBox"><div class="empty">Nothing logged yet.</div></div>
   </div>
 
@@ -281,7 +285,27 @@
       <p><b>Predicted low</b> is the lowest point of the forward curve. It's a planning estimate, not a guarantee — verify with a reading, especially before deciding not to treat.</p>
     </div>
   </details>
-  <div class="buildstamp">build 2026-05-27i &middot; planning aid only &mdash; not a medical device</div>
+  <div class="buildstamp">build 2026-05-27j &middot; planning aid only &mdash; not a medical device</div>
+</div>
+
+<div id="cgmModal" class="modal" style="display:none">
+  <div class="modal-bg"></div>
+  <div class="modal-panel">
+    <div class="modal-header">
+      <div><b>Add CGM readings</b> &mdash; <span id="cgmCycleLabel"></span></div>
+      <button id="cgmClose" class="danger-ghost" style="padding:4px 10px">close</button>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <div class="field grow"><label class="fl">reading time (local)</label><input id="cgmTime" type="datetime-local"/></div>
+    </div>
+    <div class="row">
+      <div class="field grow"><label class="fl">BG (mg/dL)</label><input class="num" id="cgmBg" type="number" min="0" step="1" inputmode="numeric" placeholder="e.g. 92"/></div>
+      <div class="field"><label class="fl">&nbsp;</label><button id="cgmLog" class="logbtn">Log (+5m)</button></div>
+    </div>
+    <div class="help">Set the start time, then type each BG and tap <b>Log</b> &mdash; the time auto-advances 5 minutes. If your CGM trace has a gap (sensor blackout etc.), just type a new time and continue from there. Readings are added straight to the saved cycle and feed back into analysis, exports, and residuals.</div>
+    <div class="sec-title" style="margin-top:14px;font-size:13px">Readings in this cycle</div>
+    <div id="cgmList" style="max-height:260px;overflow-y:auto"></div>
+  </div>
 </div>
 
 <script>
@@ -626,7 +650,8 @@ window.__startGlucoseApp=function(){
                exercise:JSON.parse(JSON.stringify(state.exercise)),
                metrics:cycleMetrics(simulate()) };
     archive.unshift(snap); saveArchive(); renderArchive();
-    if(confirm('Cycle saved to archive. Clear the current events to start a fresh cycle?')) clearEvents(true);
+    /* non-destructive: keep the working cycle intact. User clears manually with "Clear all" when ready. */
+    var st=document.getElementById('saveStatus'); if(st){ st.textContent='Saved a snapshot of this cycle.'; setTimeout(function(){ st.textContent=''; }, 2500); }
   }
   function renderArchive(){
     var inc=archive.filter(function(c){return !c.excludedFromAnalysis;}).length;
@@ -640,7 +665,7 @@ window.__startGlucoseApp=function(){
       var desc=(c.label?('<b>'+c.label+'</b> &middot; '):'')+(c.start?(c.start.bg+' mg/dL / '+(c.start.iob||0)+'u'):'no anchor')+' &middot; '+(m.nTablets||0)+' tab, '+(m.nReadings||0)+' read'+(m.hadExercise?', exer':'')+(m.meanResidual!=null?(' &middot; err '+(m.meanResidual>=0?'+':'')+m.meanResidual):'');
       var noteHtml = c.note? '<div class="st" style="font-style:italic">\u201c'+esc(c.note)+'\u201d</div>' : '';
       var low=(m.predLow!=null?m.predLow:'\u2014')+' / '+(m.actualMin!=null?m.actualMin:'\u2014');
-      h+='<tr'+(c.excludedFromAnalysis?' class="excl-row"':'')+'><td><span class="num">'+when+'</span></td><td class="st">'+desc+noteHtml+'</td><td class="num">'+low+'</td><td style="text-align:right;white-space:nowrap"><button class="mini" data-notearch="'+c.id+'">note</button><button class="mini" data-loadarch="'+c.id+'">load</button><button class="mini" data-analarch="'+c.id+'">analyse</button><label class="excl"><input type="checkbox" data-exclcyc="'+c.id+'"'+(c.excludedFromAnalysis?' checked':'')+'/>excl</label><span class="x" data-delarch="'+c.id+'">\u2715</span></td></tr>';
+      h+='<tr'+(c.excludedFromAnalysis?' class="excl-row"':'')+'><td><span class="num">'+when+'</span></td><td class="st">'+desc+noteHtml+'</td><td class="num">'+low+'</td><td style="text-align:right;white-space:nowrap"><button class="mini" data-cgmarch="'+c.id+'">+CGM</button><button class="mini" data-notearch="'+c.id+'">note</button><button class="mini" data-loadarch="'+c.id+'">load</button><button class="mini" data-analarch="'+c.id+'">analyse</button><label class="excl"><input type="checkbox" data-exclcyc="'+c.id+'"'+(c.excludedFromAnalysis?' checked':'')+'/>excl</label><span class="x" data-delarch="'+c.id+'">\u2715</span></td></tr>';
     });
     h+='</tbody></table>'; box.innerHTML=h;
     box.querySelectorAll('[data-delarch]').forEach(function(b){ b.onclick=function(){ var id=b.getAttribute('data-delarch'); if(!confirm('Delete this saved cycle? This cannot be undone.'))return; archive=archive.filter(function(c){return c.id!==id;}); saveArchive(); renderArchive(); }; });
@@ -648,8 +673,75 @@ window.__startGlucoseApp=function(){
     box.querySelectorAll('[data-analarch]').forEach(function(b){ b.onclick=function(){ analyzeCycle(b.getAttribute('data-analarch')); }; });
     box.querySelectorAll('[data-exclcyc]').forEach(function(b){ b.onchange=function(){ var c=findCycle(b.getAttribute('data-exclcyc')); if(c){ c.excludedFromAnalysis=b.checked; saveArchive(); renderArchive(); } }; });
     box.querySelectorAll('[data-notearch]').forEach(function(b){ b.onclick=function(){ setCycleNote(b.getAttribute('data-notearch')); }; });
+    box.querySelectorAll('[data-cgmarch]').forEach(function(b){ b.onclick=function(){ openCgmModal(b.getAttribute('data-cgmarch')); }; });
   }
   function setCycleNote(id){ var c=findCycle(id); if(!c)return; var t=prompt('Note / context for this cycle (anything that might matter for tuning):', c.note||''); if(t===null) return; c.note=t.trim(); if(!c.note) delete c.note; saveArchive(); renderArchive(); }
+
+  /* ----- CGM bulk-entry tool for saved cycles ----- */
+  function pad2(n){ return n<10?'0'+n:''+n; }
+  function isoLocal(ms){ var d=new Date(ms); return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate())+'T'+pad2(d.getHours())+':'+pad2(d.getMinutes()); }
+  function refreshCycleMetrics(c){
+    if(!c.metrics) c.metrics={};
+    var bgs=c.events.filter(function(e){return e.type==='bg'&&!e.excluded;}).map(function(e){return e.value;});
+    if(c.start) bgs.push(c.start.bg);
+    c.metrics.actualMin = bgs.length? Math.min.apply(null,bgs) : null;
+    c.metrics.nReadings = c.events.filter(function(e){return e.type==='bg'&&!e.excluded;}).length;
+    var rr=ctxResiduals(c);
+    c.metrics.meanResidual = rr.summary? rr.summary.meanResidual : null;
+  }
+  var cgmState={cycleId:null, addedIds:[]};
+  function openCgmModal(id){
+    var c=findCycle(id); if(!c) return;
+    cgmState.cycleId=id; cgmState.addedIds=[];
+    document.getElementById('cgmCycleLabel').textContent = c.label || new Date(c.savedAt).toLocaleString();
+    /* default time: end of last existing reading + 5m, else cycle anchor, else savedAt */
+    var bgs=c.events.filter(function(e){return e.type==='bg';}).map(function(e){return e.t;});
+    var defaultT;
+    if(bgs.length) defaultT = Math.max.apply(null,bgs) + 5*60000;
+    else if(c.start) defaultT = c.start.t;
+    else defaultT = c.savedAt;
+    document.getElementById('cgmTime').value = isoLocal(defaultT);
+    document.getElementById('cgmBg').value='';
+    document.getElementById('cgmModal').style.display='flex';
+    renderCgmList();
+    setTimeout(function(){ document.getElementById('cgmBg').focus(); }, 50);
+  }
+  function closeCgmModal(){ document.getElementById('cgmModal').style.display='none'; cgmState.cycleId=null; renderArchive(); render(); }
+  function logCgmReading(){
+    var c=findCycle(cgmState.cycleId); if(!c) return;
+    var bg=parseFloat(document.getElementById('cgmBg').value);
+    if(isNaN(bg)||bg<=0){ document.getElementById('cgmBg').focus(); return; }
+    var ts=document.getElementById('cgmTime').value;
+    if(!ts){ alert('Set a reading time first.'); return; }
+    var t=new Date(ts).getTime();
+    if(isNaN(t)){ alert('That time is not valid.'); return; }
+    var ev={id:uid(),type:'bg',t:t,value:bg};
+    c.events.push(ev); cgmState.addedIds.push(ev.id);
+    refreshCycleMetrics(c); saveArchive();
+    document.getElementById('cgmTime').value = isoLocal(t + 5*60000);
+    document.getElementById('cgmBg').value='';
+    document.getElementById('cgmBg').focus();
+    renderCgmList();
+  }
+  function renderCgmList(){
+    var c=findCycle(cgmState.cycleId); if(!c) return;
+    var list=document.getElementById('cgmList');
+    var bgs=c.events.filter(function(e){return e.type==='bg';}).sort(function(a,b){return a.t-b.t;});
+    if(!bgs.length){ list.innerHTML='<div class="empty">No BG readings in this cycle yet.</div>'; return; }
+    var h='<table class="log"><tbody>';
+    bgs.forEach(function(e){
+      var sessTag = cgmState.addedIds.indexOf(e.id)>=0 ? ' <span class="st">(new)</span>' : '';
+      var when = new Date(e.t).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+      h+='<tr><td><span class="num">'+when+'</span></td><td class="num">'+e.value+' mg/dL'+sessTag+'</td><td style="text-align:right"><span class="x" data-cgmdel="'+e.id+'">\u2715</span></td></tr>';
+    });
+    h+='</tbody></table>'; list.innerHTML=h;
+    list.querySelectorAll('[data-cgmdel]').forEach(function(b){ b.onclick=function(){
+      var id=b.getAttribute('data-cgmdel');
+      c.events=c.events.filter(function(e){return e.id!==id;});
+      cgmState.addedIds=cgmState.addedIds.filter(function(x){return x!==id;});
+      refreshCycleMetrics(c); saveArchive(); renderCgmList();
+    };});
+  }
   function findCycle(id){ for(var i=0;i<archive.length;i++){ if(archive[i].id===id) return archive[i]; } return null; }
   function cycleStartT(c){ if(c.start) return c.start.t; if(c.events.length){ return Math.min.apply(null,c.events.map(function(e){return e.t;})); } return c.savedAt; }
   function cycleReadings(c){ var st0=cycleStartT(c); return c.events.filter(function(e){return e.type==='bg';}).map(function(e){return {min:Math.round((e.t-st0)/60000),bg:e.value};}).sort(function(a,b){return a.min-b.min;}); }
@@ -789,6 +881,10 @@ window.__startGlucoseApp=function(){
   document.getElementById('addFood').onclick=addFood;
   document.getElementById('addBg').onclick=addBg;
   document.getElementById('addInsulin').onclick=addInsulin;
+  document.getElementById('cgmLog').onclick=logCgmReading;
+  document.getElementById('cgmClose').onclick=closeCgmModal;
+  document.querySelector('#cgmModal .modal-bg').onclick=closeCgmModal;
+  document.getElementById('cgmBg').addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); logCgmReading(); } });
   document.getElementById('saveSettings').onclick=saveSettings;
   document.getElementById('resetAll').onclick=resetAll;
   document.getElementById('clearEvents').onclick=function(){ clearEvents(false); };
