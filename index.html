@@ -289,7 +289,7 @@
       <p><b>Predicted low</b> is the lowest point of the forward curve. It's a planning estimate, not a guarantee — verify with a reading, especially before deciding not to treat.</p>
     </div>
   </details>
-  <div class="buildstamp">build 2026-05-27o &middot; planning aid only &mdash; not a medical device</div>
+  <div class="buildstamp">build 2026-05-27q &middot; planning aid only &mdash; not a medical device</div>
 </div>
 
 <div id="cgmModal" class="modal" style="display:none">
@@ -452,7 +452,7 @@ window.__startGlucoseApp=function(){
 
   var chart=null, vis={fc:true,noTab:true,gob:false,iob:false,actual:true,insMarker:true,tabMarker:true,foodMarker:true};
   var bandPlugin={ id:'band', beforeDatasetsDraw:function(c){ var s=state.settings; var ya=c.chartArea, ctx=c.ctx, y=c.scales.y; if(!y)return; var top=y.getPixelForValue(s.hi), bot=y.getPixelForValue(s.lo); ctx.save(); ctx.fillStyle='rgba(22,163,74,0.08)'; ctx.fillRect(ya.left,Math.max(ya.top,top),ya.right-ya.left,Math.min(ya.bottom,bot)-Math.max(ya.top,top)); ctx.strokeStyle='rgba(220,38,38,0.5)'; ctx.setLineDash([4,4]); ctx.lineWidth=1; var ly=y.getPixelForValue(s.lo); ctx.beginPath(); ctx.moveTo(ya.left,ly); ctx.lineTo(ya.right,ly); ctx.stroke(); ctx.setLineDash([]); ctx.restore(); } };
-  var nowPlugin={ id:'nowl', afterDraw:function(c){ if(!c.scales.x)return; var x=c.scales.x.getPixelForValue(0), a=c.chartArea, ctx=c.ctx; ctx.save(); ctx.strokeStyle='#9aa3b1'; ctx.lineWidth=1; ctx.setLineDash([4,4]); ctx.beginPath(); ctx.moveTo(x,a.top); ctx.lineTo(x,a.bottom); ctx.stroke(); ctx.setLineDash([]); ctx.fillStyle='#9aa3b1'; ctx.font='11px IBM Plex Mono, monospace'; ctx.fillText('now',x+4,a.top+12); ctx.restore(); } };
+  var nowPlugin={ id:'nowl', afterDraw:function(c){ if(!c.scales.x)return; var x=c.scales.x.getPixelForValue(0), a=c.chartArea, ctx=c.ctx; ctx.save(); ctx.strokeStyle='rgba(220,38,38,0.30)'; ctx.lineWidth=1; ctx.setLineDash([2,3]); ctx.beginPath(); ctx.moveTo(x,a.top+16); ctx.lineTo(x,a.bottom); ctx.stroke(); ctx.setLineDash([]); ctx.fillStyle='#DC2626'; ctx.font='bold 16px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='top'; ctx.fillText('\u2605', x, a.top); ctx.restore(); } };
   var eventMarkersPlugin={ id:'evmark', afterDatasetsDraw:function(c){
     if(!c.scales.x || !c.scales.y) return;
     var ctx=c.ctx, a=c.chartArea, t0=Date.now();
@@ -776,9 +776,9 @@ window.__startGlucoseApp=function(){
       c.events.forEach(function(e){
         if(e.excluded) return;
         var spec=null;
-        if(e.type==='insulin') spec={color:'#DC2626',guide:'rgba(220,38,38,0.45)',up:false,fill:true, label:'-'+e.units+'u'};
-        else if(e.type==='tablet')  spec={color:'#D97706',guide:'rgba(217,119,6,0.45)',up:true, fill:true, label:'+'+e.grams+'g'};
-        else if(e.type==='food')    spec={color:'#B45309',guide:'rgba(180,83,9,0.45)',up:true, fill:false,label:'+'+e.grams+'g'};
+        if(e.type==='insulin'){ if(!viewerState.vis.insMarker) return; spec={color:'#DC2626',guide:'rgba(220,38,38,0.45)',up:false,fill:true, label:'-'+e.units+'u'}; }
+        else if(e.type==='tablet'){ if(!viewerState.vis.tabMarker) return; spec={color:'#D97706',guide:'rgba(217,119,6,0.45)',up:true, fill:true, label:'+'+e.grams+'g'}; }
+        else if(e.type==='food'){ if(!viewerState.vis.foodMarker) return; spec={color:'#B45309',guide:'rgba(180,83,9,0.45)',up:true, fill:false,label:'+'+e.grams+'g'}; }
         if(!spec) return;
         var px=ch.scales.x.getPixelForValue(xMin(e.t));
         if(px<a.left-2||px>a.right+2) return;
@@ -802,7 +802,7 @@ window.__startGlucoseApp=function(){
         x:{type:'linear',min:xMin(tStart),max:xMin(tEnd),
           ticks:{callback:function(v){var d=new Date(anchorT+v*60000); return d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});},color:'#8A93A1',font:{family:'IBM Plex Mono',size:10},maxRotation:0,autoSkipPadding:14},
           grid:{color:'rgba(0,0,0,0.05)'}},
-        y:{title:{display:true,text:'BG (mg/dL)',color:'#8A93A1',font:{size:11}},ticks:{color:'#8A93A1',font:{family:'IBM Plex Mono'}},grid:{color:'rgba(0,0,0,0.06)'}},
+        y:{min:30,max:350,title:{display:true,text:'BG (mg/dL)',color:'#8A93A1',font:{size:11}},ticks:{color:'#8A93A1',font:{family:'IBM Plex Mono'}},grid:{color:'rgba(0,0,0,0.06)'}},
         yG:{position:'right',title:{display:true,text:'GOB (g)',color:'#8A93A1',font:{size:11}},grid:{drawOnChartArea:false},min:0,display:viewerState.vis.gob,ticks:{color:'#8A93A1',font:{family:'IBM Plex Mono'}}},
         yI:{position:'right',title:{display:true,text:'IOB (u)',color:'#8A93A1',font:{size:11}},grid:{drawOnChartArea:false},min:0,display:viewerState.vis.iob,ticks:{color:'#8A93A1',font:{family:'IBM Plex Mono'}}}},
       plugins:{legend:{display:false},tooltip:{callbacks:{title:function(i){var v=i[0].parsed.x; return new Date(anchorT+v*60000).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})+' ('+(v>=0?'+':'')+Math.round(v)+'m)';},label:function(c){var l=c.dataset.label; if(l==='GOB')return 'GOB: '+c.parsed.y.toFixed(1)+' g'; if(l==='IOB')return 'IOB: '+c.parsed.y.toFixed(2)+' u'; if(l==='actual')return (c.raw.anchor?'Start: ':'Actual: ')+Math.round(c.parsed.y)+' mg/dL'; return 'Forecast: '+Math.round(c.parsed.y)+' mg/dL';}}}}};
@@ -810,11 +810,27 @@ window.__startGlucoseApp=function(){
     viewerChart=new Chart(document.getElementById('viewerChart'),{type:'line',data:{datasets:ds},options:opts,plugins:[viewerBandPlugin,viewerEvtPlugin]});
     /* legend */
     var legEl=document.getElementById('viewerLegend'); legEl.innerHTML='';
-    function legItem(key,label,style){ var sp=document.createElement('span'); sp.className=viewerState.vis[key]?'':'off'; sp.innerHTML='<span class="swatch" style="'+style+'"></span>'+label; sp.onclick=function(){ viewerState.vis[key]=!viewerState.vis[key]; openViewer(viewerState.cycleId); }; legEl.appendChild(sp); }
+    function applyViewerVis(){
+      if(!viewerChart) return;
+      viewerChart.data.datasets.forEach(function(d){
+        if(d.label==='forecast') d.hidden=!viewerState.vis.fc;
+        else if(d.label==='actual') d.hidden=!viewerState.vis.actual;
+        else if(d.label==='IOB') d.hidden=!viewerState.vis.iob;
+        else if(d.label==='GOB') d.hidden=!viewerState.vis.gob;
+      });
+      viewerChart.options.scales.yG.display=viewerState.vis.gob;
+      viewerChart.options.scales.yI.display=viewerState.vis.iob;
+      viewerChart.update('none');
+    }
+    function legItem(key,label,style){ var sp=document.createElement('span'); sp.className=viewerState.vis[key]?'':'off'; sp.innerHTML='<span class="swatch" style="'+style+'"></span>'+label; sp.onclick=function(){ viewerState.vis[key]=!viewerState.vis[key]; sp.className=viewerState.vis[key]?'':'off'; applyViewerVis(); }; legEl.appendChild(sp); }
+    function legMark(key,label,glyph,color){ var sp=document.createElement('span'); sp.className=viewerState.vis[key]?'':'off'; sp.innerHTML='<span class="swatch mark" style="color:'+color+'">'+glyph+'</span>'+label; sp.onclick=function(){ viewerState.vis[key]=!viewerState.vis[key]; sp.className=viewerState.vis[key]?'':'off'; if(viewerChart) viewerChart.update('none'); }; legEl.appendChild(sp); }
     legItem('fc','forecast','border-top:3px solid #2563EB');
     legItem('actual','actual','border-top:3px solid #16A34A');
     legItem('iob','IOB','border-top:3px solid #DC2626');
     legItem('gob','GOB','border-top:3px solid #D97706');
+    legMark('insMarker','insulin','\u25BC','#DC2626');
+    legMark('tabMarker','tablet','\u25B2','#D97706');
+    legMark('foodMarker','food','\u25B3','#B45309');
     /* events list */
     renderViewerEvents(c, anchorT);
     /* clear any prior analysis output */
@@ -1061,7 +1077,22 @@ window.__startGlucoseApp=function(){
   function setStart(){ var v=parseFloat(document.getElementById('startBg').value); var io=parseFloat(document.getElementById('startIob').value); var ago=parseFloat(document.getElementById('startAgo').value)||0; if(isNaN(v))return; state.start={bg:v,iob:isNaN(io)?0:io,t:now()-ago*60000}; persist(); render(); }
   function addTablet(){ var g=parseFloat(document.getElementById('grams').value)||0; var ago=parseFloat(document.getElementById('minAgo').value)||0; if(g<=0)return; state.events.push({id:uid(),type:'tablet',t:now()-ago*60000,grams:g}); document.getElementById('minAgo').value=0; state.defaultGrams=g; persist(); render(); }
   function bump(d){ var i=document.getElementById('grams'); var v=(parseFloat(i.value)||0)+d; if(v<0)v=0; i.value=v; }
-  function toggleEx(){ var a=activeExSession(); if(a){ a.end=now(); } else { var dur=parseFloat(document.getElementById('exDur').value)||0; state.exercise.push({id:uid(),start:now(), end: dur>0? now()+dur*60000 : null}); } setExBtn(); persist(); render(); }
+  function toggleEx(){
+    var a=activeExSession();
+    if(a){ a.end=now(); }
+    else {
+      var dur=parseFloat(document.getElementById('exDur').value)||0;
+      var nStart=now(), nEnd= dur>0? nStart+dur*60000 : Infinity;
+      var overlap=null;
+      for(var i=0;i<state.exercise.length;i++){ var s=state.exercise[i]; if(s.excluded) continue; var sEnd = s.end!=null? s.end : Infinity; if(s.start < nEnd && nStart < sEnd){ overlap=s; break; } }
+      if(overlap){
+        var when=clock(overlap.start)+'\u2192'+(overlap.end!=null?clock(overlap.end):'ongoing');
+        if(!confirm('This new exercise session overlaps an existing one ('+when+').\n\nTwo overlapping sessions double-count the non-insulin glucose burn over the overlap, so the forecast will drop unrealistically fast. Add anyway?')) return;
+      }
+      state.exercise.push({id:uid(),start:nStart, end: dur>0? nEnd : null});
+    }
+    setExBtn(); persist(); render();
+  }
   function setExBtn(){ var b=document.getElementById('exBtn'),a=activeExSession(); if(a){ b.className='toggle on'; b.textContent= a.end? ('Exercising \u2192 '+clock(a.end)) : 'Exercising: on'; } else { b.className='toggle'; b.textContent='Exercising: off'; } }
   function addBg(){ var v=parseFloat(document.getElementById('bgVal').value); var io=parseFloat(document.getElementById('bgIob').value); var ago=parseFloat(document.getElementById('bgAgo').value)||0; if(isNaN(v))return; var ev={id:uid(),type:'bg',t:now()-ago*60000,value:v}; if(!isNaN(io))ev.iob=io; state.events.push(ev); document.getElementById('bgVal').value=''; document.getElementById('bgIob').value=''; document.getElementById('bgAgo').value=0; persist(); render(); }
   function addInsulin(){ var u=parseFloat(document.getElementById('insUnits').value); var ago=parseFloat(document.getElementById('insAgo').value)||0; if(isNaN(u)||u<=0)return; state.events.push({id:uid(),type:'insulin',t:now()-ago*60000,units:u}); document.getElementById('insUnits').value=''; document.getElementById('insAgo').value=0; persist(); render(); }
