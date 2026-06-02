@@ -289,7 +289,7 @@
       <p><b>Predicted low</b> is the lowest point of the forward curve. It's a planning estimate, not a guarantee — verify with a reading, especially before deciding not to treat.</p>
     </div>
   </details>
-  <div class="buildstamp">build 2026-05-27q &middot; planning aid only &mdash; not a medical device</div>
+  <div class="buildstamp">build 2026-05-27r &middot; planning aid only &mdash; not a medical device</div>
 </div>
 
 <div id="cgmModal" class="modal" style="display:none">
@@ -452,7 +452,7 @@ window.__startGlucoseApp=function(){
 
   var chart=null, vis={fc:true,noTab:true,gob:false,iob:false,actual:true,insMarker:true,tabMarker:true,foodMarker:true};
   var bandPlugin={ id:'band', beforeDatasetsDraw:function(c){ var s=state.settings; var ya=c.chartArea, ctx=c.ctx, y=c.scales.y; if(!y)return; var top=y.getPixelForValue(s.hi), bot=y.getPixelForValue(s.lo); ctx.save(); ctx.fillStyle='rgba(22,163,74,0.08)'; ctx.fillRect(ya.left,Math.max(ya.top,top),ya.right-ya.left,Math.min(ya.bottom,bot)-Math.max(ya.top,top)); ctx.strokeStyle='rgba(220,38,38,0.5)'; ctx.setLineDash([4,4]); ctx.lineWidth=1; var ly=y.getPixelForValue(s.lo); ctx.beginPath(); ctx.moveTo(ya.left,ly); ctx.lineTo(ya.right,ly); ctx.stroke(); ctx.setLineDash([]); ctx.restore(); } };
-  var nowPlugin={ id:'nowl', afterDraw:function(c){ if(!c.scales.x)return; var x=c.scales.x.getPixelForValue(0), a=c.chartArea, ctx=c.ctx; ctx.save(); ctx.strokeStyle='rgba(220,38,38,0.30)'; ctx.lineWidth=1; ctx.setLineDash([2,3]); ctx.beginPath(); ctx.moveTo(x,a.top+16); ctx.lineTo(x,a.bottom); ctx.stroke(); ctx.setLineDash([]); ctx.fillStyle='#DC2626'; ctx.font='bold 16px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='top'; ctx.fillText('\u2605', x, a.top); ctx.restore(); } };
+  var nowPlugin={ id:'nowl', afterDraw:function(c){ if(!c.scales.x)return; var x=c.scales.x.getPixelForValue(0), a=c.chartArea, ctx=c.ctx; ctx.save(); ctx.strokeStyle='rgba(220,38,38,0.35)'; ctx.lineWidth=1.5; ctx.beginPath(); ctx.moveTo(x,a.top); ctx.lineTo(x,a.bottom-14); ctx.stroke(); var sy=a.bottom-4; ctx.font='bold 22px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='bottom'; ctx.lineWidth=5; ctx.strokeStyle='#FFFFFF'; ctx.strokeText('\u2605', x, sy); ctx.fillStyle='#DC2626'; ctx.fillText('\u2605', x, sy); ctx.font='bold 9px IBM Plex Mono, monospace'; ctx.lineWidth=4; ctx.strokeStyle='#FFFFFF'; ctx.strokeText('NOW', x, sy-22); ctx.fillStyle='#DC2626'; ctx.fillText('NOW', x, sy-22); ctx.restore(); } };
   var eventMarkersPlugin={ id:'evmark', afterDatasetsDraw:function(c){
     if(!c.scales.x || !c.scales.y) return;
     var ctx=c.ctx, a=c.chartArea, t0=Date.now();
