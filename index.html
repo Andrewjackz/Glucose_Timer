@@ -289,7 +289,7 @@
       <p><b>Predicted low</b> is the lowest point of the forward curve. It's a planning estimate, not a guarantee — verify with a reading, especially before deciding not to treat.</p>
     </div>
   </details>
-  <div class="buildstamp">build 2026-05-27r &middot; planning aid only &mdash; not a medical device</div>
+  <div class="buildstamp">build 2026-05-27t &middot; planning aid only &mdash; not a medical device</div>
 </div>
 
 <div id="cgmModal" class="modal" style="display:none">
@@ -489,10 +489,10 @@ window.__startGlucoseApp=function(){
     var ds=[];
     ds.push({label:'forecast',data:sim.fc,parsing:false,borderColor:'#2563EB',borderWidth:3,pointRadius:0,tension:.3,spanGaps:false,hidden:!vis.fc,order:1});
     ds.push({label:'no tablets',data:sim.noTab,parsing:false,borderColor:'#9aa3b1',borderWidth:1.6,borderDash:[6,4],pointRadius:0,tension:.3,spanGaps:false,hidden:!vis.noTab,order:2});
-    if(sim.nadV!=null){ var col=sim.nadV<state.settings.lo?'#DC2626':(sim.nadV<state.settings.lo+15?'#D97706':'#16A34A'); ds.push({label:'low',data:[{x:sim.nadX,y:sim.nadV}],parsing:false,showLine:false,pointRadius:5,pointHoverRadius:6,borderColor:col,backgroundColor:col,order:0}); }
+    if(sim.nadV!=null){ var col=sim.nadV<state.settings.lo?'#DC2626':(sim.nadV<state.settings.lo+15?'#D97706':'#16A34A'); ds.push({label:'low',data:[{x:sim.nadX,y:sim.nadV}],parsing:false,showLine:false,pointStyle:'rectRot',pointRadius:8,pointHoverRadius:9,borderColor:'#FFFFFF',backgroundColor:col,borderWidth:2,order:0}); }
     ds.push({label:'GOB',data:sim.gob,parsing:false,borderColor:'#D97706',backgroundColor:'rgba(217,119,6,.10)',borderWidth:1.4,pointRadius:0,tension:.3,yAxisID:'yG',fill:true,hidden:!vis.gob,order:4});
     ds.push({label:'IOB',data:sim.iob,parsing:false,borderColor:'#DC2626',backgroundColor:'rgba(220,38,38,.10)',borderWidth:1.4,pointRadius:0,tension:.3,yAxisID:'yI',fill:true,spanGaps:false,hidden:!vis.iob,order:5});
-    if(sim.actual.length) ds.push({label:'actual',data:sim.actual,parsing:false,showLine:false,borderColor:'#16A34A',backgroundColor:'#16A34A',pointRadius:4,pointHoverRadius:5,hidden:!vis.actual,order:0});
+    if(sim.actual.length) ds.push({label:'actual',data:sim.actual,parsing:false,showLine:false,borderColor:'#FFFFFF',backgroundColor:'#334155',pointRadius:4,pointHoverRadius:5,borderWidth:1,hidden:!vis.actual,order:0});
     var opts={ responsive:true,maintainAspectRatio:false,animation:false,interaction:{mode:'nearest',intersect:false},
       scales:{ x:{type:'linear',title:{display:true,text:'clock time / minutes from now',color:'#8A93A1',font:{size:11}},grid:{color:'rgba(0,0,0,.05)'},ticks:{stepSize:30,color:'#8A93A1',font:{family:'IBM Plex Mono',size:10},callback:function(v){ var d=new Date(Date.now()+v*60000); var t=d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}); return [t, v===0?'now':(v>0?'+'+v:''+v)]; }}},
         y:{suggestedMin:40,suggestedMax:240,title:{display:true,text:'BG (mg/dL)',color:'#8A93A1',font:{size:11}},grid:{color:'rgba(0,0,0,.05)'},ticks:{color:'#8A93A1',font:{family:'IBM Plex Mono'}}},
@@ -510,7 +510,7 @@ window.__startGlucoseApp=function(){
     function staticItem(label,style){ var sp=document.createElement('span'); sp.style.cursor='default'; sp.innerHTML='<span class="swatch '+(style.indexOf('height')>=0?'band':'')+'" style="'+style+'"></span>'+label; el.appendChild(sp); }
     item('fc','forecast','border-top:3px solid #2563EB');
     item('noTab','no tablets','border-top:3px dashed #9aa3b1');
-    item('actual','actual','border-top:3px solid #16A34A');
+    item('actual','actual','border-top:3px solid #334155');
     item('gob','glucose on board','border-top:3px solid #D97706');
     item('iob','insulin on board','border-top:3px solid #DC2626');
     markerItem('insMarker','insulin mark','\u25BC','#DC2626');
@@ -765,7 +765,7 @@ window.__startGlucoseApp=function(){
       {label:'forecast',data:fc,parsing:false,borderColor:'#2563EB',borderWidth:3,pointRadius:0,tension:.3,spanGaps:false,hidden:!viewerState.vis.fc,order:1},
       {label:'IOB',data:iobS,parsing:false,borderColor:'#DC2626',backgroundColor:'rgba(220,38,38,.10)',borderWidth:1.4,pointRadius:0,tension:.3,yAxisID:'yI',fill:true,spanGaps:false,hidden:!viewerState.vis.iob,order:5},
       {label:'GOB',data:gobS,parsing:false,borderColor:'#D97706',backgroundColor:'rgba(217,119,6,.10)',borderWidth:1.4,pointRadius:0,tension:.3,yAxisID:'yG',fill:true,hidden:!viewerState.vis.gob,order:4},
-      {label:'actual',data:actual,parsing:false,showLine:false,borderColor:'#16A34A',backgroundColor:'#16A34A',pointRadius:4,pointHoverRadius:5,hidden:!viewerState.vis.actual,order:0}
+      {label:'actual',data:actual,parsing:false,showLine:false,borderColor:'#FFFFFF',backgroundColor:'#334155',pointRadius:4,pointHoverRadius:5,borderWidth:1,hidden:!viewerState.vis.actual,order:0}
     ];
     var s=c.settings;
     var lowBand=Math.max(60, (s.targetLow||70)), highBand=Math.min(180,(s.targetHigh||160));
@@ -825,7 +825,7 @@ window.__startGlucoseApp=function(){
     function legItem(key,label,style){ var sp=document.createElement('span'); sp.className=viewerState.vis[key]?'':'off'; sp.innerHTML='<span class="swatch" style="'+style+'"></span>'+label; sp.onclick=function(){ viewerState.vis[key]=!viewerState.vis[key]; sp.className=viewerState.vis[key]?'':'off'; applyViewerVis(); }; legEl.appendChild(sp); }
     function legMark(key,label,glyph,color){ var sp=document.createElement('span'); sp.className=viewerState.vis[key]?'':'off'; sp.innerHTML='<span class="swatch mark" style="color:'+color+'">'+glyph+'</span>'+label; sp.onclick=function(){ viewerState.vis[key]=!viewerState.vis[key]; sp.className=viewerState.vis[key]?'':'off'; if(viewerChart) viewerChart.update('none'); }; legEl.appendChild(sp); }
     legItem('fc','forecast','border-top:3px solid #2563EB');
-    legItem('actual','actual','border-top:3px solid #16A34A');
+    legItem('actual','actual','border-top:3px solid #334155');
     legItem('iob','IOB','border-top:3px solid #DC2626');
     legItem('gob','GOB','border-top:3px solid #D97706');
     legMark('insMarker','insulin','\u25BC','#DC2626');
@@ -1118,11 +1118,11 @@ window.__startGlucoseApp=function(){
   function clearEvents(silent){ if(!silent && !confirm('Clear all events (tablets, food, readings, exercise and the current BG/IOB)? Settings are kept.'))return; state.events=[]; state.exercise=[]; state.start=null; persist(); setExBtn(); render(); }
 
   async function callClaude(system,userText){
-    var body={model:"claude-sonnet-4-20250514",max_tokens:1000,system:system,messages:[{role:"user",content:userText}]};
+    var body={model:"claude-sonnet-4-6",max_tokens:1000,system:system,messages:[{role:"user",content:userText}]};
     var headers={"Content-Type":"application/json"};
     if(sessionKey){ headers["x-api-key"]=sessionKey; headers["anthropic-version"]="2023-06-01"; headers["anthropic-dangerous-direct-browser-access"]="true"; }
     var res=await fetch(state.settings.api,{method:"POST",headers:headers,body:JSON.stringify(body)});
-    if(!res.ok) throw new Error("HTTP "+res.status+(res.status===401?" \u2014 check your API key":""));
+    if(!res.ok){ var detail=''; try{ var err=await res.json(); if(err && err.error && err.error.message) detail=' \u2014 '+err.error.message; }catch(_){} throw new Error("HTTP "+res.status+(res.status===401?' \u2014 check your API key':detail)); }
     var data=await res.json();
     return (data.content||[]).filter(function(b){return b.type==='text';}).map(function(b){return b.text;}).join("\n").trim();
   }
